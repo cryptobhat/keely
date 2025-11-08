@@ -171,7 +171,13 @@ enum class KeyType {
      * SETTINGS - Opens keyboard settings
      * Quick access to preferences
      */
-    SETTINGS
+    SETTINGS,
+
+    /**
+     * CLIPBOARD - Shows clipboard history
+     * Opens popup with clipboard items
+     */
+    CLIPBOARD
 }
 
 /**

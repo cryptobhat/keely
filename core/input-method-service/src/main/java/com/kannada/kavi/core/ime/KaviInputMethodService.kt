@@ -9,8 +9,12 @@ import com.kannada.kavi.core.layout.LayoutManager
 import com.kannada.kavi.core.layout.models.KeyType
 import com.kannada.kavi.core.engine.SoundManager
 import com.kannada.kavi.features.suggestion.SuggestionEngine
+import com.kannada.kavi.features.clipboard.ClipboardManager
 import com.kannada.kavi.ui.keyboardview.KeyboardView
 import com.kannada.kavi.ui.keyboardview.SuggestionStripView
+import com.kannada.kavi.ui.keyboardview.ClipboardPopupView
+import android.widget.PopupWindow
+import android.view.Gravity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,6 +68,9 @@ class KaviInputMethodService : InputMethodService() {
     // SuggestionEngine provides word predictions
     private lateinit var suggestionEngine: SuggestionEngine
 
+    // ClipboardManager handles clipboard history
+    private lateinit var clipboardManager: ClipboardManager
+
     // Coroutine scope for async operations
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -72,6 +79,9 @@ class KaviInputMethodService : InputMethodService() {
 
     // The suggestion strip view above the keyboard
     private var suggestionStripView: SuggestionStripView? = null
+
+    // Clipboard popup window
+    private var clipboardPopup: PopupWindow? = null
 
     /**
      * onCreate - Called when the service is first created
@@ -95,6 +105,9 @@ class KaviInputMethodService : InputMethodService() {
         // Initialize suggestion engine
         suggestionEngine = SuggestionEngine(this)
         suggestionEngine.initialize()
+
+        // Initialize clipboard manager
+        clipboardManager = ClipboardManager(this)
 
         // Load all keyboard layouts asynchronously
         serviceScope.launch {
@@ -306,6 +319,7 @@ class KaviInputMethodService : InputMethodService() {
             KeyType.SETTINGS -> {
                 // TODO: Open settings
             }
+            KeyType.CLIPBOARD -> onClipboardPressed()
         }
     }
 
@@ -487,5 +501,81 @@ class KaviInputMethodService : InputMethodService() {
             )
             // Suggestions automatically update via Flow observer
         }
+    }
+
+    /**
+     * Show clipboard history popup
+     *
+     * Displays a popup window with clipboard history above the keyboard
+     */
+    private fun showClipboardPopup() {
+        // Create popup view if needed
+        val popupView = ClipboardPopupView(this).apply {
+            // Set clipboard items
+            setItems(clipboardManager.items.value)
+
+            // Handle item click (paste)
+            setOnItemClickListener { item ->
+                // Paste the clipboard item
+                val text = clipboardManager.pasteItem(item.id)
+                if (text != null) {
+                    inputConnectionHandler.commitText(text, 1)
+                }
+                hideClipboardPopup()
+            }
+
+            // Handle close button
+            setOnCloseListener {
+                hideClipboardPopup()
+            }
+
+            // Handle pin toggle
+            setOnPinToggleListener { item ->
+                clipboardManager.setPinned(item.id, !item.isPinned)
+                // Update popup with new data
+                setItems(clipboardManager.items.value)
+            }
+
+            // Handle delete
+            setOnDeleteListener { item ->
+                clipboardManager.deleteItem(item.id)
+                // Update popup with new data
+                setItems(clipboardManager.items.value)
+            }
+        }
+
+        // Create popup window
+        val density = resources.displayMetrics.density
+        val popupHeight = (400 * density).toInt()
+
+        clipboardPopup = PopupWindow(
+            popupView,
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            popupHeight,
+            true
+        ).apply {
+            // Show popup above keyboard
+            val keyboardView = keyboardView
+            if (keyboardView != null) {
+                showAtLocation(keyboardView, Gravity.BOTTOM, 0, keyboardView.height)
+            }
+        }
+    }
+
+    /**
+     * Hide clipboard popup
+     */
+    private fun hideClipboardPopup() {
+        clipboardPopup?.dismiss()
+        clipboardPopup = null
+    }
+
+    /**
+     * Handle clipboard button press
+     *
+     * Shows clipboard history popup
+     */
+    private fun onClipboardPressed() {
+        showClipboardPopup()
     }
 }
