@@ -15,8 +15,9 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.google.services)
-    alias(libs.plugins.firebase.crashlytics)
+    // TODO: Add these back when Firebase is set up
+    // alias(libs.plugins.google.services)
+    // alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
@@ -81,30 +82,14 @@ dependencies {
     implementation(project(":core:keyboard-engine"))
     implementation(project(":core:input-method-service"))
     implementation(project(":core:layout-manager"))
-    implementation(project(":core:gesture-detector"))
 
-    // Feature modules - Individual features that can be enabled/disabled
-    implementation(project(":features:layouts"))
+    // Feature modules - Individual features that are implemented
     implementation(project(":features:suggestion-engine"))
     implementation(project(":features:clipboard"))
-    implementation(project(":features:voice"))
     implementation(project(":features:converter"))
-    implementation(project(":features:themes"))
-    implementation(project(":features:settings"))
-    implementation(project(":features:analytics"))
-    implementation(project(":features:notifications"))
-
-    // Data modules - Handle all data operations
-    implementation(project(":data:database"))
-    implementation(project(":data:repositories"))
-    implementation(project(":data:preferences"))
-    implementation(project(":data:cache"))
 
     // UI modules - User interface components
     implementation(project(":ui:keyboard-view"))
-    implementation(project(":ui:popup-views"))
-    implementation(project(":ui:settings-ui"))
-    implementation(project(":ui:theme-preview"))
 
     // AndroidX Core
     implementation(libs.androidx.core.ktx)
@@ -141,10 +126,10 @@ dependencies {
     // WorkManager for background tasks
     implementation(libs.androidx.work.runtime.ktx)
 
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.analytics)
-    implementation(libs.firebase.crashlytics)
+    // TODO: Add Firebase back when google-services.json is set up
+    // implementation(platform(libs.firebase.bom))
+    // implementation(libs.firebase.analytics)
+    // implementation(libs.firebase.crashlytics)
 
     // Testing
     testImplementation(libs.junit)
