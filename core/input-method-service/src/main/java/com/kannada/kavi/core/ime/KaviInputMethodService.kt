@@ -5,10 +5,14 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import com.kannada.kavi.core.layout.LayoutManager
+import com.kannada.kavi.core.layout.models.KeyType
+import com.kannada.kavi.ui.keyboardview.KeyboardView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
@@ -54,7 +58,7 @@ class KaviInputMethodService : InputMethodService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // The keyboard view that will be displayed
-    private var keyboardView: View? = null
+    private var keyboardView: KeyboardView? = null
 
     /**
      * onCreate - Called when the service is first created
@@ -89,16 +93,21 @@ class KaviInputMethodService : InputMethodService() {
      * @return The View that represents our keyboard
      */
     override fun onCreateInputView(): View {
-        // TODO: Create and return the actual keyboard view
-        // For now, return a simple placeholder
-        // This will be replaced with our custom KeyboardView in the next step
-
-        val view = layoutInflater.inflate(
-            android.R.layout.simple_list_item_1,
-            null
-        )
+        // Create our custom KeyboardView
+        val view = KeyboardView(this).apply {
+            // Set key press listener
+            setOnKeyPressListener { key ->
+                handleKeyPress(key)
+            }
+        }
 
         keyboardView = view
+
+        // Observe layout changes and update keyboard view
+        layoutManager.currentRows.onEach { rows ->
+            keyboardView?.setKeyboard(rows)
+        }.launchIn(serviceScope)
+
         return view
     }
 
@@ -213,12 +222,42 @@ class KaviInputMethodService : InputMethodService() {
     }
 
     /**
+     * Handle key press from KeyboardView
+     * Routes the key to the appropriate handler based on its type
+     *
+     * @param key The key that was pressed
+     */
+    private fun handleKeyPress(key: com.kannada.kavi.core.layout.models.Key) {
+        when (key.type) {
+            KeyType.CHARACTER -> onKeyPressed(key.output)
+            KeyType.DELETE -> onDeletePressed()
+            KeyType.ENTER -> onEnterPressed()
+            KeyType.SPACE -> onSpacePressed()
+            KeyType.SHIFT -> onShiftPressed()
+            KeyType.SYMBOLS,
+            KeyType.SYMBOLS_EXTRA,
+            KeyType.SYMBOLS_ALT -> onSymbolsPressed()
+            KeyType.DEFAULT -> onDefaultPressed()
+            KeyType.LANGUAGE -> onLanguagePressed()
+            KeyType.EMOJI -> {
+                // TODO: Show emoji picker
+            }
+            KeyType.VOICE -> {
+                // TODO: Start voice input
+            }
+            KeyType.SETTINGS -> {
+                // TODO: Open settings
+            }
+        }
+    }
+
+    /**
      * Public function to handle key presses
      * This will be called by the KeyboardView when user taps a key
      *
      * @param keyOutput The character to type
      */
-    fun onKeyPressed(keyOutput: String) {
+    private fun onKeyPressed(keyOutput: String) {
         val ic = currentInputConnection ?: return
 
         // Check if transliteration is enabled
