@@ -1,0 +1,231 @@
+{
+  "name": "Kavi Custom Kannada Layout",
+  "description": "Modern Kannada layout optimized for touch typing",
+  "version": "1.0",
+  "language": "kn",
+  "layers": {
+    "default": {
+      "rows": [
+        {
+          "keys": [
+            {"label": "ಟ", "output": "ಟ", "width": 1.0},
+            {"label": "ಡ", "output": "ಡ", "width": 1.0},
+            {"label": "ಎ", "output": "ಎ", "width": 1.0},
+            {"label": "ರ", "output": "ರ", "width": 1.0},
+            {"label": "ತ", "output": "ತ", "width": 1.0},
+            {"label": "ಯ", "output": "ಯ", "width": 1.0},
+            {"label": "ಉ", "output": "ಉ", "width": 1.0},
+            {"label": "ಇ", "output": "ಇ", "width": 1.0},
+            {"label": "ಒ", "output": "ಒ", "width": 1.0},
+            {"label": "ಪ", "output": "ಪ", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "ಅ", "output": "ಅ", "width": 1.0},
+            {"label": "ಸ", "output": "ಸ", "width": 1.0},
+            {"label": "ದ", "output": "ದ", "width": 1.0},
+            {"label": "ಫ", "output": "ಫ", "width": 1.0},
+            {"label": "ಗ", "output": "ಗ", "width": 1.0},
+            {"label": "ಹ", "output": "ಹ", "width": 1.0},
+            {"label": "ಜ", "output": "ಜ", "width": 1.0},
+            {"label": "ಕ", "output": "ಕ", "width": 1.0},
+            {"label": "ಲ", "output": "ಲ", "width": 1.0},
+            {"label": "ೞ", "output": "ೞ", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "⇧", "output": "", "type": "shift", "width": 1.5},
+            {"label": "ಜ", "output": "ಜ", "width": 1.0},
+            {"label": "ಚ", "output": "ಚ", "width": 1.0},
+            {"label": "ವ", "output": "ವ", "width": 1.0},
+            {"label": "ಬ", "output": "ಬ", "width": 1.0},
+            {"label": "ನ", "output": "ನ", "width": 1.0},
+            {"label": "ಮ", "output": "ಮ", "width": 1.0},
+            {"label": "ಂ", "output": "ಂ", "width": 1.0},
+            {"label": "ಃ", "output": "ಃ", "width": 1.0},
+            {"label": "⌫", "output": "", "type": "delete", "width": 1.5}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "?123", "output": "", "type": "symbols", "width": 1.5},
+            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
+            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
+            {"label": "", "output": " ", "type": "space", "width": 4.0},
+            {"label": ".", "output": ".", "width": 1.0},
+            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
+          ]
+        }
+      ]
+    },
+    "shift": {
+      "rows": [
+        {
+          "keys": [
+            {"label": "ಠ", "output": "ಠ", "width": 1.0},
+            {"label": "ಢ", "output": "ಢ", "width": 1.0},
+            {"label": "ಏ", "output": "ಏ", "width": 1.0},
+            {"label": "ಋ", "output": "ಋ", "width": 1.0},
+            {"label": "ಥ", "output": "ಥ", "width": 1.0},
+            {"label": "ಐ", "output": "ಐ", "width": 1.0},
+            {"label": "ಊ", "output": "ಊ", "width": 1.0},
+            {"label": "ಈ", "output": "ಈ", "width": 1.0},
+            {"label": "ಓ", "output": "ಓ", "width": 1.0},
+            {"label": "ಫ", "output": "ಫ", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "ಆ", "output": "ಆ", "width": 1.0},
+            {"label": "ಶ", "output": "ಶ", "width": 1.0},
+            {"label": "ಧ", "output": "ಧ", "width": 1.0},
+            {"label": "೦", "output": "೦", "width": 1.0},
+            {"label": "ಘ", "output": "ಘ", "width": 1.0},
+            {"label": "ಃ", "output": "ಃ", "width": 1.0},
+            {"label": "ಝ", "output": "ಝ", "width": 1.0},
+            {"label": "ಖ", "output": "ಖ", "width": 1.0},
+            {"label": "ಳ", "output": "ಳ", "width": 1.0},
+            {"label": "಼", "output": "಼", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "⇧", "output": "", "type": "shift", "width": 1.5},
+            {"label": "ಞ", "output": "ಞ", "width": 1.0},
+            {"label": "ಛ", "output": "ಛ", "width": 1.0},
+            {"label": "ಔ", "output": "ಔ", "width": 1.0},
+            {"label": "ಭ", "output": "ಭ", "width": 1.0},
+            {"label": "ಣ", "output": "ಣ", "width": 1.0},
+            {"label": "ೞ", "output": "ೞ", "width": 1.0},
+            {"label": "ಁ", "output": "ಁ", "width": 1.0},
+            {"label": "ँ", "output": "ँ", "width": 1.0},
+            {"label": "⌫", "output": "", "type": "delete", "width": 1.5}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "?123", "output": "", "type": "symbols", "width": 1.5},
+            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
+            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
+            {"label": "", "output": " ", "type": "space", "width": 4.0},
+            {"label": ".", "output": ".", "width": 1.0},
+            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
+          ]
+        }
+      ]
+    },
+    "symbols": {
+      "rows": [
+        {
+          "keys": [
+            {"label": "೧", "output": "೧", "width": 1.0},
+            {"label": "೨", "output": "೨", "width": 1.0},
+            {"label": "೩", "output": "೩", "width": 1.0},
+            {"label": "೪", "output": "೪", "width": 1.0},
+            {"label": "೫", "output": "೫", "width": 1.0},
+            {"label": "೬", "output": "೬", "width": 1.0},
+            {"label": "೭", "output": "೭", "width": 1.0},
+            {"label": "೮", "output": "೮", "width": 1.0},
+            {"label": "೯", "output": "೯", "width": 1.0},
+            {"label": "೦", "output": "೦", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "@", "output": "@", "width": 1.0},
+            {"label": "#", "output": "#", "width": 1.0},
+            {"label": "₹", "output": "₹", "width": 1.0},
+            {"label": "%", "output": "%", "width": 1.0},
+            {"label": "&", "output": "&", "width": 1.0},
+            {"label": "-", "output": "-", "width": 1.0},
+            {"label": "+", "output": "+", "width": 1.0},
+            {"label": "(", "output": "(", "width": 1.0},
+            {"label": ")", "output": ")", "width": 1.0},
+            {"label": "/", "output": "/", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "=\\<", "output": "", "type": "symbols_extra", "width": 1.5},
+            {"label": "*", "output": "*", "width": 1.0},
+            {"label": "\"", "output": "\"", "width": 1.0},
+            {"label": "'", "output": "'", "width": 1.0},
+            {"label": ":", "output": ":", "width": 1.0},
+            {"label": ";", "output": ";", "width": 1.0},
+            {"label": "!", "output": "!", "width": 1.0},
+            {"label": "?", "output": "?", "width": 1.0},
+            {"label": "⌫", "output": "", "type": "delete", "width": 1.5}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "ABC", "output": "", "type": "default", "width": 1.5},
+            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
+            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
+            {"label": "", "output": " ", "type": "space", "width": 4.0},
+            {"label": ",", "output": ",", "width": 1.0},
+            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
+          ]
+        }
+      ]
+    },
+    "symbols_extra": {
+      "rows": [
+        {
+          "keys": [
+            {"label": "~", "output": "~", "width": 1.0},
+            {"label": "`", "output": "`", "width": 1.0},
+            {"label": "|", "output": "|", "width": 1.0},
+            {"label": "•", "output": "•", "width": 1.0},
+            {"label": "√", "output": "√", "width": 1.0},
+            {"label": "π", "output": "π", "width": 1.0},
+            {"label": "÷", "output": "÷", "width": 1.0},
+            {"label": "×", "output": "×", "width": 1.0},
+            {"label": "¶", "output": "¶", "width": 1.0},
+            {"label": "∆", "output": "∆", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "$", "output": "$", "width": 1.0},
+            {"label": "€", "output": "€", "width": 1.0},
+            {"label": "£", "output": "£", "width": 1.0},
+            {"label": "¥", "output": "¥", "width": 1.0},
+            {"label": "^", "output": "^", "width": 1.0},
+            {"label": "°", "output": "°", "width": 1.0},
+            {"label": "=", "output": "=", "width": 1.0},
+            {"label": "{", "output": "{", "width": 1.0},
+            {"label": "}", "output": "}", "width": 1.0},
+            {"label": "\\", "output": "\\", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "?123", "output": "", "type": "symbols", "width": 1.5},
+            {"label": "©", "output": "©", "width": 1.0},
+            {"label": "®", "output": "®", "width": 1.0},
+            {"label": "™", "output": "™", "width": 1.0},
+            {"label": "✓", "output": "✓", "width": 1.0},
+            {"label": "[", "output": "[", "width": 1.0},
+            {"label": "]", "output": "]", "width": 1.0},
+            {"label": "<", "output": "<", "width": 1.0},
+            {"label": ">", "output": ">", "width": 1.0},
+            {"label": "⌫", "output": "", "type": "delete", "width": 1.0}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "ABC", "output": "", "type": "default", "width": 1.5},
+            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
+            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
+            {"label": "", "output": " ", "type": "space", "width": 4.0},
+            {"label": "_", "output": "_", "width": 1.0},
+            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
+          ]
+        }
+      ]
+    }
+  }
+}

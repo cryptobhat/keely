@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Core Common Module Manifest
+
+    This is a simple manifest file required for all Android library modules.
+    It doesn't need any special permissions or components since this is just a utility module.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No permissions or components needed for this utility module -->
+</manifest>
