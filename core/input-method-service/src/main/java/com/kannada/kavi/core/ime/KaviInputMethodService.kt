@@ -4,10 +4,13 @@ import android.inputmethodservice.InputMethodService
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import android.widget.LinearLayout
 import com.kannada.kavi.core.layout.LayoutManager
 import com.kannada.kavi.core.layout.models.KeyType
 import com.kannada.kavi.core.engine.SoundManager
+import com.kannada.kavi.features.suggestion.SuggestionEngine
 import com.kannada.kavi.ui.keyboardview.KeyboardView
+import com.kannada.kavi.ui.keyboardview.SuggestionStripView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -58,11 +61,17 @@ class KaviInputMethodService : InputMethodService() {
     // SoundManager handles key press sound effects
     private lateinit var soundManager: SoundManager
 
+    // SuggestionEngine provides word predictions
+    private lateinit var suggestionEngine: SuggestionEngine
+
     // Coroutine scope for async operations
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // The keyboard view that will be displayed
     private var keyboardView: KeyboardView? = null
+
+    // The suggestion strip view above the keyboard
+    private var suggestionStripView: SuggestionStripView? = null
 
     /**
      * onCreate - Called when the service is first created
@@ -83,6 +92,10 @@ class KaviInputMethodService : InputMethodService() {
         soundManager = SoundManager(this)
         soundManager.initialize()
 
+        // Initialize suggestion engine
+        suggestionEngine = SuggestionEngine(this)
+        suggestionEngine.initialize()
+
         // Load all keyboard layouts asynchronously
         serviceScope.launch {
             layoutManager.initialize()
@@ -101,22 +114,40 @@ class KaviInputMethodService : InputMethodService() {
      * @return The View that represents our keyboard
      */
     override fun onCreateInputView(): View {
-        // Create our custom KeyboardView
+        // Create container to hold suggestion strip + keyboard
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        // Create suggestion strip
+        val stripView = SuggestionStripView(this).apply {
+            setOnSuggestionClickListener { suggestion ->
+                onSuggestionClicked(suggestion)
+            }
+        }
+        suggestionStripView = stripView
+        container.addView(stripView)
+
+        // Create keyboard view
         val view = KeyboardView(this).apply {
-            // Set key press listener
             setOnKeyPressListener { key ->
                 handleKeyPress(key)
             }
         }
-
         keyboardView = view
+        container.addView(view)
 
         // Observe layout changes and update keyboard view
         layoutManager.currentRows.onEach { rows ->
             keyboardView?.setKeyboard(rows)
         }.launchIn(serviceScope)
 
-        return view
+        // Observe suggestions from engine and update strip
+        suggestionEngine.suggestions.onEach { suggestions ->
+            suggestionStripView?.setSuggestions(suggestions)
+        }.launchIn(serviceScope)
+
+        return container
     }
 
     /**
@@ -302,6 +333,9 @@ class KaviInputMethodService : InputMethodService() {
 
         // Disable shift after typing (if not caps lock)
         layoutManager.disableShiftAfterInput()
+
+        // Update suggestions based on current word
+        updateSuggestions()
     }
 
     /**
@@ -309,6 +343,9 @@ class KaviInputMethodService : InputMethodService() {
      */
     fun onDeletePressed() {
         inputConnectionHandler.deleteText()
+
+        // Update suggestions after deletion
+        updateSuggestions()
     }
 
     /**
@@ -355,8 +392,20 @@ class KaviInputMethodService : InputMethodService() {
      * Handle space key press
      */
     fun onSpacePressed() {
+        // Get current word before committing space
+        val currentWord = inputConnectionHandler.getCurrentWord()
+
+        // Commit space
         inputConnectionHandler.commitText(" ")
         layoutManager.disableShiftAfterInput()
+
+        // Learn from the typed word
+        if (currentWord.isNotEmpty()) {
+            suggestionEngine.onWordTyped(currentWord)
+        }
+
+        // Clear suggestions
+        suggestionStripView?.clear()
     }
 
     /**
@@ -386,5 +435,57 @@ class KaviInputMethodService : InputMethodService() {
      */
     fun getLayoutManager(): LayoutManager {
         return layoutManager
+    }
+
+    /**
+     * Handle suggestion click
+     *
+     * Called when user taps a suggestion in the strip
+     *
+     * @param suggestion The tapped suggestion
+     */
+    private fun onSuggestionClicked(suggestion: com.kannada.kavi.features.suggestion.models.Suggestion) {
+        // Get current word to delete it
+        val currentWord = inputConnectionHandler.getCurrentWord()
+
+        // Delete the current word
+        if (currentWord.isNotEmpty()) {
+            inputConnectionHandler.deleteText(currentWord.length)
+        }
+
+        // Insert the suggestion with a space
+        inputConnectionHandler.commitText(suggestion.word + " ")
+
+        // Learn from user's choice
+        suggestionEngine.onSuggestionSelected(suggestion)
+
+        // Clear suggestions
+        suggestionStripView?.clear()
+    }
+
+    /**
+     * Update suggestions based on current word
+     *
+     * Called after each character input or deletion
+     */
+    private fun updateSuggestions() {
+        serviceScope.launch {
+            val currentWord = inputConnectionHandler.getCurrentWord()
+
+            if (currentWord.isEmpty()) {
+                suggestionStripView?.clear()
+                return@launch
+            }
+
+            // Get current layout language
+            val language = if (layoutManager.getCurrentLayoutId() == "qwerty") "en" else "kn"
+
+            // Get suggestions from engine
+            suggestionEngine.getSuggestions(
+                currentWord = currentWord,
+                language = language
+            )
+            // Suggestions automatically update via Flow observer
+        }
     }
 }
