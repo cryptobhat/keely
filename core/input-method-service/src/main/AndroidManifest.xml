@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Input Method Service Module Manifest
+
+    This manifest declares our keyboard service to Android.
+    It tells Android: "Hey! We have a keyboard available!"
+
+    IMPORTANT: The main app manifest will also need to declare this service.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Module: com.kannada.kavi.core.ime -->
+
+    <!-- No permissions needed at module level -->
+    <!-- Service declaration will be in main app manifest -->
+
 </manifest>

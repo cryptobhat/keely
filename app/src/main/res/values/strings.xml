@@ -1,3 +1,30 @@
 <resources>
-    <string name="app_name">Kavi</string>
+    <!-- App Name -->
+    <string name="app_name">Kavi Kannada Keyboard</string>
+
+    <!-- Keyboard Subtypes -->
+    <string name="subtype_phonetic">Phonetic Kannada</string>
+    <string name="subtype_kavi">Kavi Custom Kannada</string>
+    <string name="subtype_qwerty">English (QWERTY)</string>
+
+    <!-- Keyboard UI -->
+    <string name="key_space">Space</string>
+    <string name="key_enter">Enter</string>
+    <string name="key_delete">Delete</string>
+    <string name="key_shift">Shift</string>
+    <string name="key_symbols">123</string>
+    <string name="key_abc">ABC</string>
+    <string name="key_language">🌐</string>
+    <string name="key_emoji">😊</string>
+    <string name="key_voice">🎤</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Keyboard Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_behavior">Behavior</string>
+    <string name="settings_advanced">Advanced</string>
+
+    <!-- Notifications -->
+    <string name="notification_enable_keyboard">Enable Kavi Keyboard</string>
+    <string name="notification_enable_keyboard_message">Go to Settings to enable Kavi Kannada Keyboard</string>
 </resources>

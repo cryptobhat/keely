@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Input Method Configuration
+
+    This file tells Android about our keyboard's capabilities.
+    It's like a resume for our keyboard - lists what it can do!
+
+    Think of it as filling out a form:
+    - What languages do you support? Kannada, English
+    - Can you do suggestions? Yes!
+    - Can you do voice input? Yes!
+    - What's your name? Kavi Kannada Keyboard
+-->
+<input-method
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.kannada.kavi.ui.SettingsActivity"
+    android:supportsSwitchingToNextInputMethod="true">
+
+    <!--
+        Subtypes - Different Modes of Our Keyboard
+
+        A keyboard can have multiple "subtypes" - different modes.
+        Like a Swiss Army knife with different tools!
+
+        We have 3 subtypes:
+        1. Phonetic Kannada (type English, get Kannada)
+        2. Kavi Custom Kannada (native Kannada layout)
+        3. QWERTY English (standard English)
+    -->
+
+    <!-- Phonetic Kannada Layout -->
+    <subtype
+        android:imeSubtypeMode="keyboard"
+        android:imeSubtypeLocale="kn_IN"
+        android:label="@string/subtype_phonetic"
+        android:languageTag="kn-IN"
+        android:icon="@mipmap/ic_launcher" />
+
+    <!-- Kavi Custom Kannada Layout -->
+    <subtype
+        android:imeSubtypeMode="keyboard"
+        android:imeSubtypeLocale="kn_IN"
+        android:label="@string/subtype_kavi"
+        android:languageTag="kn-IN"
+        android:icon="@mipmap/ic_launcher" />
+
+    <!-- QWERTY English Layout -->
+    <subtype
+        android:imeSubtypeMode="keyboard"
+        android:imeSubtypeLocale="en_US"
+        android:label="@string/subtype_qwerty"
+        android:languageTag="en-US"
+        android:icon="@mipmap/ic_launcher" />
+
+</input-method>

@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Kavi Kannada Keyboard - Main Manifest
+
+    This file tells Android about our app and keyboard service.
+    It's like a birth certificate + resume for our app!
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions -->
+    <!-- Vibration permission for haptic feedback when typing -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Internet permission for voice input (Bhashini API) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Record audio permission for voice input -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="true"
@@ -10,6 +26,61 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Kavi" />
+        android:theme="@style/Theme.Kavi"
+        tools:targetApi="31">
+
+        <!--
+            Input Method Service Declaration
+
+            This is the most important part!
+            It tells Android: "We have a keyboard service!"
+
+            REQUIRED ATTRIBUTES:
+            - android:name: Our service class
+            - android:permission: BIND_INPUT_METHOD (security - only Android can bind)
+            - android:label: Name shown in keyboard selector
+            - android:exported: true (Android needs to access it)
+        -->
+        <service
+            android:name="com.kannada.kavi.core.ime.KaviInputMethodService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:exported="true">
+
+            <!--
+                Intent Filter
+                Tells Android: "I can handle input method requests!"
+            -->
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+
+            <!--
+                Meta-data
+                Points to our method.xml configuration file
+            -->
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+        </service>
+
+        <!--
+            Settings Activity
+            Allows users to configure the keyboard
+            Will be created in ui/settings-ui module
+        -->
+        <!-- TODO: Add settings activity when UI module is ready
+        <activity
+            android:name="com.kannada.kavi.ui.SettingsActivity"
+            android:label="@string/settings_title"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        -->
+
+    </application>
 
 </manifest>
