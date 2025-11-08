@@ -146,6 +146,17 @@ object Constants {
     }
 
     /**
+     * Audio/Sound Constants
+     * These control sound effects when typing
+     */
+    object Audio {
+        const val MAX_SOUND_STREAMS = 5           // Maximum simultaneous sounds
+        const val DEFAULT_SOUND_VOLUME = 0.5f     // 50% volume
+        const val MIN_SOUND_VOLUME = 0.0f         // Muted
+        const val MAX_SOUND_VOLUME = 1.0f         // Maximum volume
+    }
+
+    /**
      * Converter Constants (for ASCII to Unicode conversion)
      */
     object Converter {

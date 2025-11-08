@@ -6,6 +6,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import com.kannada.kavi.core.layout.LayoutManager
 import com.kannada.kavi.core.layout.models.KeyType
+import com.kannada.kavi.core.engine.SoundManager
 import com.kannada.kavi.ui.keyboardview.KeyboardView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,9 @@ class KaviInputMethodService : InputMethodService() {
     // InputConnectionHandler sends text to the app
     private lateinit var inputConnectionHandler: InputConnectionHandler
 
+    // SoundManager handles key press sound effects
+    private lateinit var soundManager: SoundManager
+
     // Coroutine scope for async operations
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -74,6 +78,10 @@ class KaviInputMethodService : InputMethodService() {
 
         // Initialize input connection handler
         inputConnectionHandler = InputConnectionHandler()
+
+        // Initialize sound manager
+        soundManager = SoundManager(this)
+        soundManager.initialize()
 
         // Load all keyboard layouts asynchronously
         serviceScope.launch {
@@ -164,6 +172,9 @@ class KaviInputMethodService : InputMethodService() {
         // Cancel all coroutines
         serviceScope.cancel()
 
+        // Release sound resources
+        soundManager.release()
+
         // Clean up keyboard view
         keyboardView = null
     }
@@ -228,6 +239,22 @@ class KaviInputMethodService : InputMethodService() {
      * @param key The key that was pressed
      */
     private fun handleKeyPress(key: com.kannada.kavi.core.layout.models.Key) {
+        // Play appropriate sound effect
+        when (key.type) {
+            KeyType.CHARACTER -> soundManager.playStandardClick()
+            KeyType.DELETE -> soundManager.playDeleteClick()
+            KeyType.ENTER -> soundManager.playEnterClick()
+            KeyType.SPACE -> soundManager.playSpaceClick()
+            KeyType.SHIFT,
+            KeyType.SYMBOLS,
+            KeyType.SYMBOLS_EXTRA,
+            KeyType.SYMBOLS_ALT,
+            KeyType.DEFAULT,
+            KeyType.LANGUAGE -> soundManager.playModifierClick()
+            else -> soundManager.playStandardClick()
+        }
+
+        // Handle the key action
         when (key.type) {
             KeyType.CHARACTER -> onKeyPressed(key.output)
             KeyType.DELETE -> onDeletePressed()
