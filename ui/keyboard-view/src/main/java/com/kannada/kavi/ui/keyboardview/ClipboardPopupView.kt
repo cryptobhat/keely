@@ -392,7 +392,7 @@ class ClipboardPopupView @JvmOverloads constructor(
                     // Item was tapped (not scrolled)
                     val item = findItemAt(event.x, event.y)
 
-                    if (item == pressedItem) {
+                    if (item == pressedItem && item != null) {
                         // Check if pin icon tapped
                         if (event.x < 100f && item.isPinned) {
                             onPinToggleListener?.invoke(item)

@@ -58,7 +58,7 @@ sealed class Result<out T> {
      * Get the data if successful, or a default value if there was an error
      * Example: getOrDefault(emptyList()) - give me the list, or an empty list if failed
      */
-    fun getOrDefault(default: T): T = when (this) {
+    fun getOrDefault(default: @UnsafeVariance T): T = when (this) {
         is Success -> data
         is Error -> default
     }

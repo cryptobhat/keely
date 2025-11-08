@@ -355,7 +355,7 @@ class SuggestionStripView @JvmOverloads constructor(
             invalidate() // Redraw to show pressed state
 
             // Haptic feedback
-            performHapticFeedback(HAPTIC_FEEDBACK_VIRTUAL_KEY)
+            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
         }
     }
 

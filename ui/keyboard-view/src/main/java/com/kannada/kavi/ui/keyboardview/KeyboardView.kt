@@ -312,7 +312,7 @@ class KeyboardView @JvmOverloads constructor(
             invalidate() // Redraw to show pressed state
 
             // Vibrate (if enabled)
-            performHapticFeedback(HAPTIC_FEEDBACK_VIRTUAL_KEY)
+            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
 
             // Play sound (TODO: add sound effects)
         }

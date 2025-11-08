@@ -49,6 +49,10 @@ dependencies {
     // Module-specific dependencies
     implementation(project(":core:common"))
     implementation(project(":core:keyboard-engine"))
+    implementation(project(":core:layout-manager"))
+    implementation(project(":features:suggestion-engine"))
+    implementation(project(":features:clipboard"))
+    implementation(project(":features:converter"))
 
     // Testing
     testImplementation(libs.junit)

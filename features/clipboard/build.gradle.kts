@@ -48,8 +48,9 @@ dependencies {
 
     // Module-specific dependencies
     implementation(project(":core:common"))
-    implementation(project(":data:database"))
-    implementation(project(":data:repositories"))
+    // TODO: Add data layer when implemented
+    // implementation(project(":data:database"))
+    // implementation(project(":data:repositories"))
 
     // Testing
     testImplementation(libs.junit)

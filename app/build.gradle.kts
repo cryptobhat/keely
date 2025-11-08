@@ -12,10 +12,10 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.parcelize)
-    alias(libs.plugins.ksp)
-    alias(libs.plugins.hilt)
     alias(libs.plugins.compose.compiler)
-    // TODO: Add these back when Firebase is set up
+    // TODO: Add these back later
+    // alias(libs.plugins.ksp)
+    // alias(libs.plugins.hilt)
     // alias(libs.plugins.google.services)
     // alias(libs.plugins.firebase.crashlytics)
 }
@@ -114,10 +114,10 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    // Dependency Injection - Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.android.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
+    // TODO: Add Hilt back later
+    // implementation(libs.hilt.android)
+    // ksp(libs.hilt.android.compiler)
+    // implementation(libs.androidx.hilt.navigation.compose)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.core)

@@ -163,7 +163,7 @@ class SuggestionEngine(private val context: Context) {
 
         // Sort by confidence and limit results
         val finalSuggestions = uniqueSuggestions
-            .sorted() // Uses Suggestion.compareTo() - highest confidence first
+            .sortedByDescending { it.confidence } // Highest confidence first
             .take(Constants.Suggestions.MAX_SUGGESTIONS)
 
         // Update observable state

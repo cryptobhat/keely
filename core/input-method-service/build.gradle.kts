@@ -7,8 +7,9 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.parcelize)
-    alias(libs.plugins.ksp)
-    alias(libs.plugins.hilt)
+    // TODO: Add these back when ready for dependency injection
+    // alias(libs.plugins.ksp)
+    // alias(libs.plugins.hilt)
 }
 
 android {
@@ -51,8 +52,15 @@ dependencies {
     // Module-specific dependencies
     implementation(project(":core:common"))
     implementation(project(":core:keyboard-engine"))
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.android.compiler)
+    implementation(project(":core:layout-manager"))
+    implementation(project(":features:suggestion-engine"))
+    implementation(project(":features:clipboard"))
+    implementation(project(":features:converter"))
+    implementation(project(":ui:keyboard-view"))
+
+    // TODO: Add Hilt back when ready
+    // implementation(libs.hilt.android)
+    // ksp(libs.hilt.android.compiler)
 
     // Testing
     testImplementation(libs.junit)

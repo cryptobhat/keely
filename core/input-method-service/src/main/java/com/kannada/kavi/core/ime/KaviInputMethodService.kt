@@ -492,7 +492,8 @@ class KaviInputMethodService : InputMethodService() {
             }
 
             // Get current layout language
-            val language = if (layoutManager.getCurrentLayoutId() == "qwerty") "en" else "kn"
+            val currentLayout = layoutManager.activeLayout.value
+            val language = if (currentLayout?.id == "qwerty") "en" else "kn"
 
             // Get suggestions from engine
             suggestionEngine.getSuggestions(
@@ -519,7 +520,7 @@ class KaviInputMethodService : InputMethodService() {
                 // Paste the clipboard item
                 val text = clipboardManager.pasteItem(item.id)
                 if (text != null) {
-                    inputConnectionHandler.commitText(text, 1)
+                    inputConnectionHandler.commitText(text)
                 }
                 hideClipboardPopup()
             }
