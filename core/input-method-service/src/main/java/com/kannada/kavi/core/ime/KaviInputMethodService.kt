@@ -134,8 +134,8 @@ class KaviInputMethodService : InputMethodService() {
             // Using Desh design system colors
             setBackgroundColor(0xFFEDEFF2.toInt())
             val density = resources.displayMetrics.density
-            val sidePadding = (6 * density).toInt()  // Minimal side padding
-            val topPadding = (6 * density).toInt()   // Small top padding
+            val sidePadding = (3 * density).toInt()  // Almost no side padding
+            val topPadding = (4 * density).toInt()   // Minimal top padding
             setPadding(sidePadding, topPadding, sidePadding, 0)
         }
 

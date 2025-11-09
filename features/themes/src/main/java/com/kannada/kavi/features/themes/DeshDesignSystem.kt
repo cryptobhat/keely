@@ -55,34 +55,34 @@ object DeshDesignSystem {
     // ==================== DIMENSIONS ====================
     object Dimensions {
         // Key dimensions (in dp) - Exact match to Desh reference
-        const val KEY_HEIGHT_PHONE_PORTRAIT = 44f        // Matches reference UI exactly
-        const val KEY_HEIGHT_PHONE_LANDSCAPE = 38f
-        const val KEY_HEIGHT_TABLET = 50f
+        const val KEY_HEIGHT_PHONE_PORTRAIT = 48f        // Matches reference UI exactly
+        const val KEY_HEIGHT_PHONE_LANDSCAPE = 40f
+        const val KEY_HEIGHT_TABLET = 52f
 
-        // Spacing (in dp) - Compact like Desh
-        const val KEY_HORIZONTAL_GAP = 4f                // Tight horizontal spacing
-        const val KEY_VERTICAL_GAP = 7f                  // Moderate vertical spacing
-        const val KEYBOARD_PADDING_HORIZONTAL = 6f       // Minimal side padding
-        const val KEYBOARD_PADDING_TOP = 6f              // Small top padding
-        const val KEYBOARD_PADDING_BOTTOM = 10f          // Minimal bottom padding
+        // Spacing (in dp) - Very tight like Desh
+        const val KEY_HORIZONTAL_GAP = 3f                // Very tight horizontal spacing
+        const val KEY_VERTICAL_GAP = 8f                  // Moderate vertical spacing
+        const val KEYBOARD_PADDING_HORIZONTAL = 3f       // Almost no side padding
+        const val KEYBOARD_PADDING_TOP = 4f              // Minimal top padding
+        const val KEYBOARD_PADDING_BOTTOM = 8f           // Minimal bottom padding
 
         // Corner radius (in dp)
-        const val KEY_CORNER_RADIUS = 8f                 // Subtle rounded corners
-        const val SPECIAL_KEY_CORNER_RADIUS = 8f
+        const val KEY_CORNER_RADIUS = 7f                 // Subtle rounded corners
+        const val SPECIAL_KEY_CORNER_RADIUS = 7f
 
         // Shadow (in dp)
-        const val KEY_SHADOW_RADIUS = 2f
-        const val KEY_SHADOW_DY = 1f
+        const val KEY_SHADOW_RADIUS = 1.5f
+        const val KEY_SHADOW_DY = 0.5f
 
         // Toolbar height
-        const val TOOLBAR_HEIGHT = 40f                   // Compact toolbar
-        const val EMOJI_BAR_HEIGHT = 40f
+        const val TOOLBAR_HEIGHT = 42f                   // Compact toolbar
+        const val EMOJI_BAR_HEIGHT = 42f
 
         // Text sizes (in sp)
-        const val KEY_TEXT_SIZE = 22f                    // Main key label
+        const val KEY_TEXT_SIZE = 23f                    // Main key label
         const val KEY_HINT_TEXT_SIZE = 11f               // Small hint text
         const val SUGGESTION_TEXT_SIZE = 15f             // Suggestion text
-        const val SPECIAL_KEY_TEXT_SIZE = 18f            // Special key labels
+        const val SPECIAL_KEY_TEXT_SIZE = 19f            // Special key labels
     }
 
     // ==================== SCREEN SIZE DETECTION ====================
@@ -136,20 +136,20 @@ object DeshDesignSystem {
 
         return when (screenSize) {
             ScreenSize.SMALL -> {
-                if (orientation == Orientation.PORTRAIT) 40f else 32f
+                if (orientation == Orientation.PORTRAIT) 42f else 34f
             }
             ScreenSize.NORMAL -> {
                 if (orientation == Orientation.PORTRAIT) {
-                    Dimensions.KEY_HEIGHT_PHONE_PORTRAIT  // 44f
+                    Dimensions.KEY_HEIGHT_PHONE_PORTRAIT  // 48f
                 } else {
-                    Dimensions.KEY_HEIGHT_PHONE_LANDSCAPE  // 38f
+                    Dimensions.KEY_HEIGHT_PHONE_LANDSCAPE  // 40f
                 }
             }
             ScreenSize.LARGE -> {
-                if (orientation == Orientation.PORTRAIT) 46f else 40f
+                if (orientation == Orientation.PORTRAIT) 50f else 42f
             }
             ScreenSize.XLARGE -> {
-                Dimensions.KEY_HEIGHT_TABLET  // 50f
+                Dimensions.KEY_HEIGHT_TABLET  // 52f
             }
         }
     }
@@ -161,10 +161,10 @@ object DeshDesignSystem {
         val screenSize = getScreenSize(context)
 
         return when (screenSize) {
-            ScreenSize.SMALL -> Pair(3f, 6f)
-            ScreenSize.NORMAL -> Pair(Dimensions.KEY_HORIZONTAL_GAP, Dimensions.KEY_VERTICAL_GAP)  // 4f, 7f
-            ScreenSize.LARGE -> Pair(5f, 8f)
-            ScreenSize.XLARGE -> Pair(6f, 9f)
+            ScreenSize.SMALL -> Pair(2.5f, 7f)
+            ScreenSize.NORMAL -> Pair(Dimensions.KEY_HORIZONTAL_GAP, Dimensions.KEY_VERTICAL_GAP)  // 3f, 8f
+            ScreenSize.LARGE -> Pair(4f, 9f)
+            ScreenSize.XLARGE -> Pair(5f, 10f)
         }
     }
 
@@ -177,25 +177,25 @@ object DeshDesignSystem {
 
         return when (screenSize) {
             ScreenSize.SMALL -> {
-                KeyboardPadding(4f, 4f, 4f, 8f)
+                KeyboardPadding(2f, 3f, 2f, 6f)
             }
             ScreenSize.NORMAL -> {
                 if (orientation == Orientation.LANDSCAPE) {
-                    KeyboardPadding(6f, 6f, 6f, 8f)
+                    KeyboardPadding(3f, 4f, 3f, 6f)
                 } else {
                     KeyboardPadding(
-                        Dimensions.KEYBOARD_PADDING_HORIZONTAL,  // 6f
-                        Dimensions.KEYBOARD_PADDING_TOP,         // 6f
-                        Dimensions.KEYBOARD_PADDING_HORIZONTAL,  // 6f
-                        Dimensions.KEYBOARD_PADDING_BOTTOM       // 10f - Minimal bottom
+                        Dimensions.KEYBOARD_PADDING_HORIZONTAL,  // 3f
+                        Dimensions.KEYBOARD_PADDING_TOP,         // 4f
+                        Dimensions.KEYBOARD_PADDING_HORIZONTAL,  // 3f
+                        Dimensions.KEYBOARD_PADDING_BOTTOM       // 8f - Minimal bottom
                     )
                 }
             }
             ScreenSize.LARGE -> {
-                KeyboardPadding(8f, 8f, 8f, 12f)
+                KeyboardPadding(4f, 5f, 4f, 10f)
             }
             ScreenSize.XLARGE -> {
-                KeyboardPadding(12f, 10f, 12f, 16f)
+                KeyboardPadding(6f, 6f, 6f, 12f)
             }
         }
     }
