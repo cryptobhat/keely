@@ -9,8 +9,10 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import androidx.core.animation.doOnEnd
 import com.kannada.kavi.core.layout.models.Key
 import com.kannada.kavi.core.layout.models.KeyboardRow
+import com.kannada.kavi.features.themes.DeshDesignSystem
 import com.kannada.kavi.features.themes.KeyboardTheme
 
 /**
@@ -64,8 +66,8 @@ class KeyboardView @JvmOverloads constructor(
     private var rows: List<KeyboardRow> = emptyList()
     private var keyBounds: MutableList<KeyBound> = mutableListOf()
 
-    // Theme (Material You design system)
-    private var theme: KeyboardTheme = KeyboardTheme.defaultLight()
+    // Theme (Desh design system)
+    private var theme: KeyboardTheme = DeshDesignSystem.createDeshTheme(context)
 
     // Paint objects (reused for performance)
     private val keyBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -97,10 +99,13 @@ class KeyboardView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    // Very subtle shadow for depth (almost invisible)
+    // Shadow for key depth (Desh design system)
     private val keyShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        maskFilter = android.graphics.BlurMaskFilter(1f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        maskFilter = android.graphics.BlurMaskFilter(
+            DeshDesignSystem.Dimensions.KEY_SHADOW_RADIUS * resources.displayMetrics.density,
+            android.graphics.BlurMaskFilter.Blur.NORMAL
+        )
     }
 
     private val keyHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -118,6 +123,11 @@ class KeyboardView @JvmOverloads constructor(
     private var rippleX = 0f
     private var rippleY = 0f
 
+    // Key press animation
+    private var keyPressAnimator: ValueAnimator? = null
+    private var keyPressScale = 1.0f
+    private var animatingKey: Key? = null
+
     // Key listener (sends key presses to InputMethodService)
     private var keyPressListener: ((Key) -> Unit)? = null
 
@@ -132,17 +142,21 @@ class KeyboardView @JvmOverloads constructor(
     private var rowPadding = 4f           // Side padding for the keyboard
 
     init {
-        // Apply default theme
+        // Apply Desh theme
         applyTheme(theme)
 
-        // Minimal padding for maximum key area
+        // Apply responsive padding from Desh design system
         val density = resources.displayMetrics.density
+        val padding = DeshDesignSystem.getKeyboardPadding(context)
         setPadding(
-            (4 * density).toInt(), // left - reduced for wider keys
-            (4 * density).toInt(), // top - reduced for taller keys
-            (4 * density).toInt(), // right - reduced for wider keys
-            (6 * density).toInt()  // bottom - slightly more for gesture bar
+            (padding.left * density).toInt(),
+            (padding.top * density).toInt(),
+            (padding.right * density).toInt(),
+            (padding.bottom * density).toInt()
         )
+
+        // Set background to match Desh design
+        setBackgroundColor(DeshDesignSystem.Colors.KEYBOARD_BACKGROUND)
     }
 
     /**
@@ -197,11 +211,13 @@ class KeyboardView @JvmOverloads constructor(
             0x08000000.toInt() // rgba(0,0,0,0.03) very subtle shadow
         }
 
-        // Apply tighter spacing for modern compact look (override theme for better layout)
+        // Apply responsive spacing from Desh design system
         val density = resources.displayMetrics.density
-        keyHorizontalSpacing = 3f * density  // 3dp between keys horizontally
-        keyVerticalSpacing = 4f * density    // 4dp between rows
-        rowPadding = 4f * density            // 4dp side padding
+        val (horizontalSpacing, verticalSpacing) = DeshDesignSystem.getKeySpacing(context)
+        keyHorizontalSpacing = horizontalSpacing * density
+        keyVerticalSpacing = verticalSpacing * density
+        val padding = DeshDesignSystem.getKeyboardPadding(context)
+        rowPadding = padding.left * density
 
         // Enable hardware acceleration for shadows
         setLayerType(LAYER_TYPE_SOFTWARE, null)
@@ -316,30 +332,50 @@ class KeyboardView @JvmOverloads constructor(
     /**
      * onMeasure - Tell Android how big we want to be
      *
-     * Android asks: "How big do you want to be?"
-     * We answer: "This big!"
-     *
-     * Modern keyboard specifications:
-     * - Key height: ~48dp for optimal touch target
-     * - Compact vertical spacing for clean look
-     * - Total height around 220-240dp for standard 4-row layout
+     * Uses Desh design system responsive sizing:
+     * - Adapts to screen size and orientation
+     * - Respects maximum height constraints
+     * - Provides optimal key sizes for each device
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val desiredWidth = MeasureSpec.getSize(widthMeasureSpec)
+        val maxHeight = MeasureSpec.getSize(heightMeasureSpec)
 
-        // Calculate desired height based on number of rows
+        // Calculate desired height based on number of rows and screen size
         val rowCount = rows.size.coerceAtLeast(4) // At least 4 rows
         val density = resources.displayMetrics.density
 
-        // Optimal key height for touch targets while keeping keyboard compact
-        val keyHeightDp = 48f // Standard touch target height
+        // Get responsive key height from Desh design system
+        val keyHeightDp = DeshDesignSystem.getKeyHeight(context)
         val keyHeightPx = keyHeightDp * density
 
-        // Calculate total spacing between rows
-        val verticalSpacingTotal = (rowCount - 1) * keyVerticalSpacing
+        // Get responsive spacing
+        val (_, verticalSpacing) = DeshDesignSystem.getKeySpacing(context)
+        val verticalSpacingPx = verticalSpacing * density
 
-        // Total height: rows + spacing + padding
-        val desiredHeight = ((rowCount * keyHeightPx) + verticalSpacingTotal + paddingTop + paddingBottom).toInt()
+        // Get responsive padding
+        val padding = DeshDesignSystem.getKeyboardPadding(context)
+        val paddingTopPx = padding.top * density
+        val paddingBottomPx = padding.bottom * density
+
+        // Calculate total height
+        val totalSpacing = (rowCount - 1) * verticalSpacingPx
+        var desiredHeight = ((rowCount * keyHeightPx) + totalSpacing + paddingTopPx + paddingBottomPx).toInt()
+
+        // Apply maximum height constraint to prevent keyboard from being too tall
+        val maxKeyboardHeightRatio = DeshDesignSystem.getMaxKeyboardHeightRatio(context)
+        val screenHeight = resources.displayMetrics.heightPixels
+        val maxKeyboardHeight = (screenHeight * maxKeyboardHeightRatio).toInt()
+
+        // Ensure we don't exceed maximum height
+        if (desiredHeight > maxKeyboardHeight) {
+            desiredHeight = maxKeyboardHeight
+        }
+
+        // Also respect the height constraint from the measure spec
+        if (maxHeight > 0 && desiredHeight > maxHeight) {
+            desiredHeight = maxHeight
+        }
 
         setMeasuredDimension(desiredWidth, desiredHeight)
     }
@@ -405,37 +441,71 @@ class KeyboardView @JvmOverloads constructor(
         // Create inset bounds to account for spacing (visual gap between keys)
         // Very minimal inset for keys to appear close together like in reference
         val insetAmount = 0.5f * resources.displayMetrics.density // 0.5dp gap on each side
+
+        // Apply scale animation if this key is being animated
+        val scale = if (key == animatingKey) keyPressScale else 1.0f
+        val scaledInset = if (key == animatingKey) {
+            val scaleOffset = (1.0f - scale) * bounds.width() / 2f
+            insetAmount + scaleOffset
+        } else {
+            insetAmount
+        }
+
         val drawBounds = RectF(
-            bounds.left + insetAmount,
-            bounds.top + insetAmount,
-            bounds.right - insetAmount,
-            bounds.bottom - insetAmount
+            bounds.left + scaledInset,
+            bounds.top + scaledInset,
+            bounds.right - scaledInset,
+            bounds.bottom - scaledInset
         )
 
-        // Choose paint based on key state
-        val backgroundPaint = when {
-            key == pressedKey -> keyPressedPaint
-            key == selectedKey -> keySelectedPaint
-            else -> keyBackgroundPaint
+        // Choose paint based on key type and state
+        val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = when {
+                // Action keys (enter, search) get special color
+                key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
+                    if (key == pressedKey) {
+                        DeshDesignSystem.Colors.ACTION_KEY_PRESSED
+                    } else {
+                        DeshDesignSystem.Colors.ACTION_KEY_BACKGROUND
+                    }
+                }
+                // Special keys (shift, delete, symbols) get tinted background
+                key.type in listOf(
+                    com.kannada.kavi.core.layout.models.KeyType.SHIFT,
+                    com.kannada.kavi.core.layout.models.KeyType.DELETE,
+                    com.kannada.kavi.core.layout.models.KeyType.SYMBOLS
+                ) -> {
+                    if (key == pressedKey) {
+                        DeshDesignSystem.Colors.SPECIAL_KEY_PRESSED
+                    } else {
+                        DeshDesignSystem.Colors.SPECIAL_KEY_BACKGROUND
+                    }
+                }
+                // Regular keys
+                key == pressedKey -> DeshDesignSystem.Colors.KEY_PRESSED
+                key == selectedKey -> DeshDesignSystem.Colors.SPECIAL_KEY_BACKGROUND
+                else -> DeshDesignSystem.Colors.KEY_BACKGROUND
+            }
         }
 
         // Get corner radius from theme (convert dp to pixels)
         val cornerRadius = theme.shape.keyCornerRadius * resources.displayMetrics.density
 
-        // Skip shadow drawing for cleaner, flatter look matching reference
-        // Shadow can be re-enabled if needed by uncommenting below
-        /*
-        if (key != pressedKey) { // No shadow when pressed (looks flatter)
-            val shadowOffset = 0.5f * resources.displayMetrics.density
+        // Draw shadow for depth (Desh design system)
+        if (key != pressedKey && theme.shape.borderEnabled) {
+            // Draw subtle shadow only when not pressed
+            val shadowOffset = DeshDesignSystem.Dimensions.KEY_SHADOW_DY * resources.displayMetrics.density
             val shadowBounds = RectF(
                 drawBounds.left,
                 drawBounds.top + shadowOffset,
                 drawBounds.right,
                 drawBounds.bottom + shadowOffset
             )
+            // Use Desh shadow color
+            keyShadowPaint.color = DeshDesignSystem.Colors.KEY_SHADOW
             canvas.drawRoundRect(shadowBounds, cornerRadius, cornerRadius, keyShadowPaint)
         }
-        */
 
         // Draw key background (rounded rectangle)
         canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, backgroundPaint)
@@ -465,11 +535,16 @@ class KeyboardView @JvmOverloads constructor(
             )
             labelPaint.textSize = optimalTextSize
 
-            // Set text color based on key state
+            // Set text color based on key type and state
             labelPaint.color = when {
-                key == pressedKey -> theme.colors.onSurface
-                key == selectedKey -> theme.colors.primary
-                else -> theme.colors.onSurface
+                // White text on action keys
+                key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
+                    DeshDesignSystem.Colors.ACTION_KEY_TEXT
+                }
+                // Regular text color for other keys
+                key == pressedKey -> DeshDesignSystem.Colors.KEY_TEXT
+                key == selectedKey -> DeshDesignSystem.Colors.KEY_TEXT
+                else -> DeshDesignSystem.Colors.KEY_TEXT
             }
 
             canvas.drawText(key.label, textX, textY, labelPaint)
@@ -535,6 +610,9 @@ class KeyboardView @JvmOverloads constructor(
             pressedKey = key.key
             pressedKeyBounds = key.bounds
 
+            // Start key press scale animation
+            startKeyPressAnimation(key.key)
+
             // Start ripple animation
             startRippleAnimation(x, y, key.bounds)
 
@@ -547,6 +625,59 @@ class KeyboardView @JvmOverloads constructor(
 
             // Play sound (if enabled in theme)
             // TODO: implement sound effects based on theme.interaction.soundEnabled
+        }
+    }
+
+    /**
+     * Start key press scale animation
+     *
+     * @param key The key to animate
+     */
+    private fun startKeyPressAnimation(key: Key) {
+        // Cancel any existing animation
+        keyPressAnimator?.cancel()
+
+        animatingKey = key
+        keyPressScale = 1.0f
+
+        // Create scale down animation
+        keyPressAnimator = ValueAnimator.ofFloat(1.0f, DeshDesignSystem.Animations.KEY_PRESS_SCALE).apply {
+            duration = DeshDesignSystem.Animations.KEY_PRESS_DURATION
+            interpolator = DecelerateInterpolator()
+
+            addUpdateListener { animator ->
+                keyPressScale = animator.animatedValue as Float
+                invalidate()
+            }
+
+            // After press, animate back to normal
+            doOnEnd {
+                animateKeyRelease()
+            }
+
+            start()
+        }
+    }
+
+    /**
+     * Animate key release
+     */
+    private fun animateKeyRelease() {
+        keyPressAnimator = ValueAnimator.ofFloat(keyPressScale, 1.0f).apply {
+            duration = DeshDesignSystem.Animations.KEY_RELEASE_DURATION
+            interpolator = DecelerateInterpolator()
+
+            addUpdateListener { animator ->
+                keyPressScale = animator.animatedValue as Float
+                invalidate()
+            }
+
+            doOnEnd {
+                animatingKey = null
+                keyPressScale = 1.0f
+            }
+
+            start()
         }
     }
 

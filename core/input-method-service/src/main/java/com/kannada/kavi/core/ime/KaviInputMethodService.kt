@@ -130,6 +130,9 @@ class KaviInputMethodService : InputMethodService() {
         // Create container to hold suggestion strip + keyboard
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            // Set explicit background color to prevent transparency issues
+            // Using Desh design system colors
+            setBackgroundColor(0xFFF5F6F7.toInt()) // Light gray background from Desh
         }
 
         // Create suggestion strip
@@ -146,6 +149,8 @@ class KaviInputMethodService : InputMethodService() {
             setOnKeyPressListener { key ->
                 handleKeyPress(key)
             }
+            // Ensure keyboard view also has proper background
+            setBackgroundColor(0xFFF5F6F7.toInt()) // Match container background
         }
         keyboardView = view
         container.addView(view)
