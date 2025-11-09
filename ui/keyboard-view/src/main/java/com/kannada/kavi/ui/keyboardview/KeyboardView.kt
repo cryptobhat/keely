@@ -431,8 +431,8 @@ class KeyboardView @JvmOverloads constructor(
         val bounds = keyBound.bounds
 
         // Create inset bounds to account for spacing (visual gap between keys)
-        // Proper inset for clear separation between keys matching Desh design
-        val insetAmount = 2.5f * resources.displayMetrics.density // 2.5dp gap on each side for visible separation
+        // Balanced inset for keys to appear larger but still separated
+        val insetAmount = 1.5f * resources.displayMetrics.density // 1.5dp gap on each side
 
         // Apply scale animation if this key is being animated
         val scale = if (key == animatingKey) keyPressScale else 1.0f
