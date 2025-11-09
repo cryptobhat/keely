@@ -290,17 +290,9 @@ class KeyboardView @JvmOverloads constructor(
                 rowActualWidth += (row.keyCount - 1) * keyHorizontalSpacing
             }
 
-            // Special handling for row alignment to match standard QWERTY layout
-            val rowStartX = when (rowIndex) {
-                1 -> {
-                    // Second row (A row) - indent by half a key width for QWERTY alignment
-                    paddingLeft + (baseUnitWidth * 0.5f)
-                }
-                else -> {
-                    // Other rows - center normally
-                    paddingLeft + (availableWidth - rowActualWidth) / 2f
-                }
-            }
+            // Center all rows for clean alignment
+            // Removed special indentation for second row to maintain proper spacing
+            val rowStartX = paddingLeft + (availableWidth - rowActualWidth) / 2f
 
             var currentX = rowStartX
 
@@ -439,8 +431,8 @@ class KeyboardView @JvmOverloads constructor(
         val bounds = keyBound.bounds
 
         // Create inset bounds to account for spacing (visual gap between keys)
-        // Very minimal inset for keys to appear close together like in reference
-        val insetAmount = 0.5f * resources.displayMetrics.density // 0.5dp gap on each side
+        // Proper inset for clear separation between keys matching Desh design
+        val insetAmount = 2.5f * resources.displayMetrics.density // 2.5dp gap on each side for visible separation
 
         // Apply scale animation if this key is being animated
         val scale = if (key == animatingKey) keyPressScale else 1.0f
