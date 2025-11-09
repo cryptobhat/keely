@@ -97,10 +97,10 @@ class KeyboardView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    // Desh design system: subtle shadow (0 1px 2px rgba(0,0,0,0.1))
+    // Very subtle shadow for depth (almost invisible)
     private val keyShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        maskFilter = android.graphics.BlurMaskFilter(2f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        maskFilter = android.graphics.BlurMaskFilter(1f, android.graphics.BlurMaskFilter.Blur.NORMAL)
     }
 
     private val keyHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -126,22 +126,22 @@ class KeyboardView @JvmOverloads constructor(
     private var keyboardWidth = 0f
     private var keyboardHeight = 0f
 
-    // Spacing between keys (Desh design system: 2px spacing)
-    private var keyHorizontalSpacing = 2f  // Per Desh design system
-    private var keyVerticalSpacing = 2f   // Per Desh design system
-    private var rowPadding = 8f           // Per Desh design system
+    // Spacing between keys - much tighter for modern look
+    private var keyHorizontalSpacing = 3f  // Reduced from theme default for tighter layout
+    private var keyVerticalSpacing = 4f   // Reduced from theme default for compact height
+    private var rowPadding = 4f           // Side padding for the keyboard
 
     init {
         // Apply default theme
         applyTheme(theme)
 
-        // Desh design system: 8px padding
+        // Minimal padding for maximum key area
         val density = resources.displayMetrics.density
         setPadding(
-            (8 * density).toInt(), // left - per design system
-            (8 * density).toInt(), // top - per design system
-            (8 * density).toInt(), // right - per design system
-            (8 * density).toInt()  // bottom - per design system
+            (4 * density).toInt(), // left - reduced for wider keys
+            (4 * density).toInt(), // top - reduced for taller keys
+            (4 * density).toInt(), // right - reduced for wider keys
+            (6 * density).toInt()  // bottom - slightly more for gesture bar
         )
     }
 
@@ -190,18 +190,18 @@ class KeyboardView @JvmOverloads constructor(
 
         ripplePaint.color = theme.colors.ripple
 
-        // Configure shadow paint (Desh design system: rgba(0,0,0,0.1))
+        // Configure shadow paint - very subtle for clean look
         keyShadowPaint.color = if (theme.mode == com.kannada.kavi.features.themes.ThemeMode.DARK) {
-            0x1A000000.toInt() // rgba(0,0,0,0.1) for dark mode
+            0x0A000000.toInt() // rgba(0,0,0,0.04) for dark mode
         } else {
-            0x1A000000.toInt() // rgba(0,0,0,0.1) per design system
+            0x08000000.toInt() // rgba(0,0,0,0.03) very subtle shadow
         }
 
-        // Apply spacing (Desh design system: 2px between keys)
+        // Apply tighter spacing for modern compact look (override theme for better layout)
         val density = resources.displayMetrics.density
-        keyHorizontalSpacing = theme.spacing.keyHorizontalSpacing * density
-        keyVerticalSpacing = theme.spacing.keyVerticalSpacing * density
-        rowPadding = theme.spacing.rowPadding * density
+        keyHorizontalSpacing = 3f * density  // 3dp between keys horizontally
+        keyVerticalSpacing = 4f * density    // 4dp between rows
+        rowPadding = 4f * density            // 4dp side padding
 
         // Enable hardware acceleration for shadows
         setLayerType(LAYER_TYPE_SOFTWARE, null)
@@ -274,8 +274,17 @@ class KeyboardView @JvmOverloads constructor(
                 rowActualWidth += (row.keyCount - 1) * keyHorizontalSpacing
             }
 
-            // Center the row horizontally
-            val rowStartX = paddingLeft + (availableWidth - rowActualWidth) / 2f
+            // Special handling for row alignment to match standard QWERTY layout
+            val rowStartX = when (rowIndex) {
+                1 -> {
+                    // Second row (A row) - indent by half a key width for QWERTY alignment
+                    paddingLeft + (baseUnitWidth * 0.5f)
+                }
+                else -> {
+                    // Other rows - center normally
+                    paddingLeft + (availableWidth - rowActualWidth) / 2f
+                }
+            }
 
             var currentX = rowStartX
 
@@ -310,22 +319,27 @@ class KeyboardView @JvmOverloads constructor(
      * Android asks: "How big do you want to be?"
      * We answer: "This big!"
      *
-     * Desh design system specifications:
-     * - Key height: 42px (as per design system)
-     * - Key spacing: 2px between keys
-     * - Includes spacing between rows
+     * Modern keyboard specifications:
+     * - Key height: ~48dp for optimal touch target
+     * - Compact vertical spacing for clean look
+     * - Total height around 220-240dp for standard 4-row layout
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val desiredWidth = MeasureSpec.getSize(widthMeasureSpec)
 
         // Calculate desired height based on number of rows
-        // Desh design system: 42px key height
         val rowCount = rows.size.coerceAtLeast(4) // At least 4 rows
         val density = resources.displayMetrics.density
-        val keyHeightPx = 42f // Per Desh design system (in dp, will be converted to px)
+
+        // Optimal key height for touch targets while keeping keyboard compact
+        val keyHeightDp = 48f // Standard touch target height
+        val keyHeightPx = keyHeightDp * density
+
+        // Calculate total spacing between rows
         val verticalSpacingTotal = (rowCount - 1) * keyVerticalSpacing
-        val desiredHeight = ((rowCount * keyHeightPx * density) + verticalSpacingTotal).toInt() +
-                           paddingTop + paddingBottom
+
+        // Total height: rows + spacing + padding
+        val desiredHeight = ((rowCount * keyHeightPx) + verticalSpacingTotal + paddingTop + paddingBottom).toInt()
 
         setMeasuredDimension(desiredWidth, desiredHeight)
     }
@@ -389,8 +403,8 @@ class KeyboardView @JvmOverloads constructor(
         val bounds = keyBound.bounds
 
         // Create inset bounds to account for spacing (visual gap between keys)
-        // This ensures keys don't touch each other visually
-        val insetAmount = 1f * resources.displayMetrics.density // 1dp gap on each side
+        // Very minimal inset for keys to appear close together like in reference
+        val insetAmount = 0.5f * resources.displayMetrics.density // 0.5dp gap on each side
         val drawBounds = RectF(
             bounds.left + insetAmount,
             bounds.top + insetAmount,
@@ -408,9 +422,11 @@ class KeyboardView @JvmOverloads constructor(
         // Get corner radius from theme (convert dp to pixels)
         val cornerRadius = theme.shape.keyCornerRadius * resources.displayMetrics.density
 
-        // Desh design system: Draw subtle shadow (0 1px 2px rgba(0,0,0,0.1))
+        // Skip shadow drawing for cleaner, flatter look matching reference
+        // Shadow can be re-enabled if needed by uncommenting below
+        /*
         if (key != pressedKey) { // No shadow when pressed (looks flatter)
-            val shadowOffset = 1f * resources.displayMetrics.density // 1px offset per design system
+            val shadowOffset = 0.5f * resources.displayMetrics.density
             val shadowBounds = RectF(
                 drawBounds.left,
                 drawBounds.top + shadowOffset,
@@ -419,6 +435,7 @@ class KeyboardView @JvmOverloads constructor(
             )
             canvas.drawRoundRect(shadowBounds, cornerRadius, cornerRadius, keyShadowPaint)
         }
+        */
 
         // Draw key background (rounded rectangle)
         canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, backgroundPaint)

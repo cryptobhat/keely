@@ -259,11 +259,11 @@ data class ThemeColors(
                 errorContainer = 0xFFF9DEDC.toInt(),
                 onErrorContainer = 0xFF410E0B.toInt(),
 
-                // Keyboard keys
-                keyNormal = 0xFFFFFFFF.toInt(),                 // White keys
-                keyPressed = 0xFFBCE2D8.toInt(),                // From design system
+                // Keyboard keys - clean modern look like reference
+                keyNormal = 0xFFF8F9FA.toInt(),                 // Very light gray background
+                keyPressed = 0xFFE1E3E6.toInt(),                // Slightly darker when pressed
                 keySelected = 0xFFD6EFEA.toInt(),               // From design system
-                keyBorder = 0xFFDADADA.toInt(),                 // From design system
+                keyBorder = 0xFFE5E5E5.toInt(),                 // Very subtle border
                 keySelectedBorder = 0xFF00A894.toInt(),         // Bright teal
 
                 // Ripple
@@ -448,11 +448,11 @@ data class ThemeShape(
     companion object {
         fun default(): ThemeShape {
             return ThemeShape(
-                keyCornerRadius = 8f,
+                keyCornerRadius = 5f,              // Smaller radius for cleaner look
                 containerCornerRadius = 12f,
                 buttonCornerRadius = 24f,
-                borderEnabled = true,
-                borderWidth = 1f
+                borderEnabled = false,             // No borders for cleaner appearance
+                borderWidth = 0.5f                 // Thinner if enabled
             )
         }
     }
