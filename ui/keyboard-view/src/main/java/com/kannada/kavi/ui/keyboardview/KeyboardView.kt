@@ -1,5 +1,6 @@
 package com.kannada.kavi.ui.keyboardview
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -7,8 +8,10 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import com.kannada.kavi.core.layout.models.Key
 import com.kannada.kavi.core.layout.models.KeyboardRow
+import com.kannada.kavi.features.themes.KeyboardTheme
 
 /**
  * KeyboardView - The Visual Keyboard Component
@@ -61,32 +64,44 @@ class KeyboardView @JvmOverloads constructor(
     private var rows: List<KeyboardRow> = emptyList()
     private var keyBounds: MutableList<KeyBound> = mutableListOf()
 
+    // Theme (Material You design system)
+    private var theme: KeyboardTheme = KeyboardTheme.defaultLight()
+
     // Paint objects (reused for performance)
     private val keyBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFE0E0E0.toInt() // Light gray
     }
 
     private val keyPressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFBDBDBD.toInt() // Darker gray when pressed
+    }
+
+    private val keySelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
     }
 
     private val keyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 2f
-        color = 0xFF9E9E9E.toInt() // Border color
     }
 
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        textSize = 48f // Will be adjusted based on key size
-        color = 0xFF212121.toInt() // Almost black
+    }
+
+    private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
     }
 
     // Currently pressed key (for visual feedback)
     private var pressedKey: Key? = null
     private var pressedKeyBounds: RectF? = null
+    private var selectedKey: Key? = null
+
+    // Ripple animation
+    private var rippleAnimator: ValueAnimator? = null
+    private var rippleRadius = 0f
+    private var rippleX = 0f
+    private var rippleY = 0f
 
     // Key listener (sends key presses to InputMethodService)
     private var keyPressListener: ((Key) -> Unit)? = null
@@ -96,9 +111,67 @@ class KeyboardView @JvmOverloads constructor(
     private var keyboardWidth = 0f
     private var keyboardHeight = 0f
 
-    // Spacing between keys
-    private val keyPadding = 8f // Pixels between keys
-    private val rowPadding = 8f // Pixels between rows
+    // Spacing between keys (from theme)
+    private var keyHorizontalSpacing = 4f
+    private var keyVerticalSpacing = 6f
+    private var rowPadding = 6f
+
+    init {
+        // Apply default theme
+        applyTheme(theme)
+    }
+
+    /**
+     * Set Material You theme
+     *
+     * Applies all theme properties: colors, typography, shape, spacing, interactions.
+     *
+     * @param theme KeyboardTheme to apply
+     */
+    fun setTheme(theme: KeyboardTheme) {
+        this.theme = theme
+        applyTheme(theme)
+        calculateKeyBounds() // Recalculate with new spacing
+        invalidate()
+    }
+
+    /**
+     * Apply theme to all Paint objects
+     *
+     * Updates colors, sizes, and styles from theme.
+     */
+    private fun applyTheme(theme: KeyboardTheme) {
+        // Apply colors
+        keyBackgroundPaint.color = theme.colors.keyNormal
+        keyPressedPaint.color = theme.colors.keyPressed
+        keySelectedPaint.color = theme.colors.keySelected
+
+        keyBorderPaint.apply {
+            color = theme.colors.keyBorder
+            strokeWidth = theme.shape.borderWidth * resources.displayMetrics.density
+        }
+
+        labelPaint.apply {
+            color = theme.colors.onSurface
+            textSize = theme.typography.buttonSize * resources.displayMetrics.scaledDensity
+            typeface = android.graphics.Typeface.create(
+                "google_sans", // Will fallback to system font if not available
+                when (theme.typography.labelWeight) {
+                    500 -> android.graphics.Typeface.NORMAL
+                    600 -> android.graphics.Typeface.BOLD
+                    else -> android.graphics.Typeface.NORMAL
+                }
+            )
+        }
+
+        ripplePaint.color = theme.colors.ripple
+
+        // Apply spacing
+        val density = resources.displayMetrics.density
+        keyHorizontalSpacing = theme.spacing.keyHorizontalSpacing * density
+        keyVerticalSpacing = theme.spacing.keyVerticalSpacing * density
+        rowPadding = theme.spacing.rowPadding * density
+    }
 
     /**
      * Set the keyboard rows to display
@@ -125,6 +198,7 @@ class KeyboardView @JvmOverloads constructor(
      *
      * This is like creating a blueprint before building.
      * We figure out where each key should be drawn.
+     * Now uses theme spacing values for Material You design.
      */
     private fun calculateKeyBounds() {
         keyBounds.clear()
@@ -135,7 +209,7 @@ class KeyboardView @JvmOverloads constructor(
         val availableWidth = width - (paddingLeft + paddingRight)
         val availableHeight = height - (paddingTop + paddingBottom)
 
-        keyHeight = (availableHeight - (rows.size - 1) * rowPadding) / rows.size
+        keyHeight = (availableHeight - (rows.size - 1) * keyVerticalSpacing) / rows.size
 
         var currentY = paddingTop.toFloat()
 
@@ -144,20 +218,20 @@ class KeyboardView @JvmOverloads constructor(
             val totalWidth = row.totalWidth
 
             // Calculate actual key width
-            val unitWidth = (availableWidth - (row.keyCount - 1) * keyPadding) / totalWidth
+            val unitWidth = (availableWidth - (row.keyCount - 1) * keyHorizontalSpacing) / totalWidth
 
             var currentX = paddingLeft.toFloat()
 
             row.keys.forEach { key ->
                 // Calculate key width based on its width multiplier
-                val keyWidth = (unitWidth * key.width) + ((key.width - 1) * keyPadding)
+                val keyWidth = (unitWidth * key.width) + ((key.width - 1) * keyHorizontalSpacing)
 
                 // Create bounds for this key
                 val bounds = RectF(
                     currentX,
                     currentY,
-                    currentX + keyWidth - keyPadding,
-                    currentY + keyHeight - rowPadding
+                    currentX + keyWidth - keyHorizontalSpacing,
+                    currentY + keyHeight - keyVerticalSpacing
                 )
 
                 keyBounds.add(KeyBound(key, bounds))
@@ -207,9 +281,19 @@ class KeyboardView @JvmOverloads constructor(
      * Called 60 times per second for smooth animation!
      *
      * IMPORTANT: Keep this FAST! No heavy operations here!
+     *
+     * Now with Material You:
+     * - Theme colors
+     * - Ripple animation
+     * - Selected state
      */
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        // Draw ripple effect (if active)
+        if (rippleRadius > 0) {
+            canvas.drawCircle(rippleX, rippleY, rippleRadius, ripplePaint)
+        }
 
         // Draw each key
         keyBounds.forEach { keyBound ->
@@ -222,24 +306,42 @@ class KeyboardView @JvmOverloads constructor(
      *
      * @param canvas The canvas to draw on
      * @param keyBound The key and its bounds
+     *
+     * Material You enhancements:
+     * - Theme-based corner radius (8dp)
+     * - Theme colors for different states
+     * - Selected state support
+     * - Optional borders
      */
     private fun drawKey(canvas: Canvas, keyBound: KeyBound) {
         val key = keyBound.key
         val bounds = keyBound.bounds
 
-        // Choose paint based on whether key is pressed
-        val backgroundPaint = if (key == pressedKey) {
-            keyPressedPaint
-        } else {
-            keyBackgroundPaint
+        // Choose paint based on key state
+        val backgroundPaint = when {
+            key == pressedKey -> keyPressedPaint
+            key == selectedKey -> keySelectedPaint
+            else -> keyBackgroundPaint
         }
 
+        // Get corner radius from theme (convert dp to pixels)
+        val cornerRadius = theme.shape.keyCornerRadius * resources.displayMetrics.density
+
         // Draw key background (rounded rectangle)
-        val cornerRadius = 8f
         canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, backgroundPaint)
 
-        // Draw key border
-        canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, keyBorderPaint)
+        // Draw key border (if enabled in theme)
+        if (theme.shape.borderEnabled) {
+            // Use selected border color if key is selected
+            if (key == selectedKey) {
+                val selectedBorderPaint = Paint(keyBorderPaint).apply {
+                    color = theme.colors.keySelectedBorder
+                }
+                canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, selectedBorderPaint)
+            } else {
+                canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, keyBorderPaint)
+            }
+        }
 
         // Draw key label (text)
         if (key.label.isNotEmpty()) {
@@ -248,7 +350,9 @@ class KeyboardView @JvmOverloads constructor(
             val textY = bounds.centerY() - ((labelPaint.descent() + labelPaint.ascent()) / 2)
 
             // Adjust text size based on key size
-            val optimalTextSize = (bounds.height() * 0.4f).coerceAtMost(48f)
+            val optimalTextSize = (bounds.height() * 0.4f).coerceAtMost(
+                theme.typography.buttonSize * resources.displayMetrics.scaledDensity
+            )
             labelPaint.textSize = optimalTextSize
 
             canvas.drawText(key.label, textX, textY, labelPaint)
@@ -301,7 +405,11 @@ class KeyboardView @JvmOverloads constructor(
     /**
      * Handle touch down event
      *
-     * Find which key was pressed and show visual feedback
+     * Find which key was pressed and show visual feedback.
+     *
+     * Material You enhancements:
+     * - Ripple animation (120ms)
+     * - Theme-based haptic feedback intensity
      */
     private fun handleTouchDown(x: Float, y: Float) {
         val key = findKeyAt(x, y)
@@ -309,12 +417,53 @@ class KeyboardView @JvmOverloads constructor(
         if (key != null) {
             pressedKey = key.key
             pressedKeyBounds = key.bounds
+
+            // Start ripple animation
+            startRippleAnimation(x, y, key.bounds)
+
             invalidate() // Redraw to show pressed state
 
-            // Vibrate (if enabled)
-            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            // Vibrate (if enabled in theme)
+            if (theme.interaction.vibrationEnabled) {
+                performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            }
 
-            // Play sound (TODO: add sound effects)
+            // Play sound (if enabled in theme)
+            // TODO: implement sound effects based on theme.interaction.soundEnabled
+        }
+    }
+
+    /**
+     * Start Material You ripple animation
+     *
+     * @param x Touch X coordinate
+     * @param y Touch Y coordinate
+     * @param bounds Key bounds for ripple radius
+     */
+    private fun startRippleAnimation(x: Float, y: Float, bounds: RectF) {
+        // Cancel any existing ripple
+        rippleAnimator?.cancel()
+
+        // Set ripple center
+        rippleX = x
+        rippleY = y
+
+        // Calculate max ripple radius (diagonal of key)
+        val maxRadius = kotlin.math.sqrt(
+            (bounds.width() * bounds.width() + bounds.height() * bounds.height()).toDouble()
+        ).toFloat() / 2f
+
+        // Create ripple animator
+        rippleAnimator = ValueAnimator.ofFloat(0f, maxRadius).apply {
+            duration = theme.interaction.rippleDuration
+            interpolator = DecelerateInterpolator()
+
+            addUpdateListener { animator ->
+                rippleRadius = animator.animatedValue as Float
+                invalidate()
+            }
+
+            start()
         }
     }
 
@@ -337,10 +486,17 @@ class KeyboardView @JvmOverloads constructor(
 
     /**
      * Clear pressed key state
+     *
+     * Also clears ripple animation.
      */
     private fun clearPressedKey() {
         pressedKey = null
         pressedKeyBounds = null
+
+        // Clear ripple
+        rippleAnimator?.cancel()
+        rippleRadius = 0f
+
         invalidate() // Redraw to clear pressed state
     }
 

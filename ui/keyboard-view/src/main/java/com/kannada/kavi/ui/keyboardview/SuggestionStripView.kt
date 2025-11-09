@@ -8,6 +8,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.kannada.kavi.features.suggestion.models.Suggestion
+import com.kannada.kavi.features.themes.KeyboardTheme
 
 /**
  * SuggestionStripView - The Suggestion Bar Above Keyboard
@@ -74,30 +75,28 @@ class SuggestionStripView @JvmOverloads constructor(
     // Listener for suggestion taps
     private var onSuggestionClickListener: ((Suggestion) -> Unit)? = null
 
+    // Theme (Material You design system)
+    private var theme: KeyboardTheme = KeyboardTheme.defaultLight()
+
     // Paint objects (reused for performance)
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFF5F5F5.toInt() // Very light gray background
     }
 
     private val suggestionBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFFFFFFF.toInt() // White for suggestions
     }
 
     private val pressedBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFE0E0E0.toInt() // Light gray when pressed
     }
 
     private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFE0E0E0.toInt() // Divider between suggestions
     }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        textSize = 42f
         color = 0xFF212121.toInt() // Almost black
     }
 

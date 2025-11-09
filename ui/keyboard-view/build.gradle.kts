@@ -53,6 +53,7 @@ dependencies {
     implementation(project(":features:suggestion-engine"))
     implementation(project(":features:clipboard"))
     implementation(project(":features:converter"))
+    implementation(project(":features:themes"))
 
     // Testing
     testImplementation(libs.junit)
