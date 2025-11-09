@@ -64,7 +64,7 @@ object DeshDesignSystem {
         const val KEY_VERTICAL_GAP = 8f                  // Moderate vertical spacing
         const val KEYBOARD_PADDING_HORIZONTAL = 3f       // Almost no side padding
         const val KEYBOARD_PADDING_TOP = 4f              // Minimal top padding
-        const val KEYBOARD_PADDING_BOTTOM = 12f          // Bottom padding for gesture bar area
+        const val KEYBOARD_PADDING_BOTTOM = 20f          // Large bottom padding like Desh
 
         // Corner radius (in dp)
         const val KEY_CORNER_RADIUS = 7f                 // Subtle rounded corners
@@ -177,25 +177,25 @@ object DeshDesignSystem {
 
         return when (screenSize) {
             ScreenSize.SMALL -> {
-                KeyboardPadding(2f, 3f, 2f, 10f)
+                KeyboardPadding(2f, 3f, 2f, 16f)
             }
             ScreenSize.NORMAL -> {
                 if (orientation == Orientation.LANDSCAPE) {
-                    KeyboardPadding(3f, 4f, 3f, 8f)
+                    KeyboardPadding(3f, 4f, 3f, 10f)
                 } else {
                     KeyboardPadding(
                         Dimensions.KEYBOARD_PADDING_HORIZONTAL,  // 3f
                         Dimensions.KEYBOARD_PADDING_TOP,         // 4f
                         Dimensions.KEYBOARD_PADDING_HORIZONTAL,  // 3f
-                        Dimensions.KEYBOARD_PADDING_BOTTOM       // 12f - Bottom space for gesture bar
+                        Dimensions.KEYBOARD_PADDING_BOTTOM       // 20f - Large bottom padding like Desh
                     )
                 }
             }
             ScreenSize.LARGE -> {
-                KeyboardPadding(4f, 5f, 4f, 14f)
+                KeyboardPadding(4f, 5f, 4f, 22f)
             }
             ScreenSize.XLARGE -> {
-                KeyboardPadding(6f, 6f, 6f, 16f)
+                KeyboardPadding(6f, 6f, 6f, 24f)
             }
         }
     }
