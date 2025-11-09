@@ -2,6 +2,8 @@ package com.kannada.kavi.features.suggestion
 
 import android.content.Context
 import com.kannada.kavi.core.common.Constants
+import com.kannada.kavi.core.common.Result
+import com.kannada.kavi.features.suggestion.dictionary.DictionaryLoader
 import com.kannada.kavi.features.suggestion.models.Suggestion
 import com.kannada.kavi.features.suggestion.models.SuggestionSource
 import kotlinx.coroutines.CoroutineScope
@@ -64,6 +66,9 @@ import kotlinx.coroutines.withContext
  * - Background loading: Doesn't block keyboard
  */
 class SuggestionEngine(private val context: Context) {
+
+    // Dictionary loader for loading word lists from assets
+    private val dictionaryLoader = DictionaryLoader(context)
 
     // Trie for Kannada words
     private val kannadaTrie = Trie()
@@ -261,16 +266,22 @@ class SuggestionEngine(private val context: Context) {
      * Get suggestions from user's typing history
      */
     private fun getUserHistorySuggestions(prefix: String): List<Suggestion> {
-        val words = userHistoryTrie.findWordsWithPrefix(prefix, maxResults = 10)
+        val words = userHistoryTrie.findWordsWithPrefix(
+            prefix,
+            maxResults = Constants.Suggestions.MAX_INTERNAL_RESULTS
+        )
 
         return words.map { (word, frequency) ->
             // Higher frequency = higher confidence
-            val maxFrequency = 100 // Assume max frequency is 100
-            val confidence = (frequency.toFloat() / maxFrequency).coerceAtMost(1.0f)
+            val normalizedFrequency = (frequency.toFloat() / Constants.Suggestions.MAX_USER_FREQUENCY)
+                .coerceAtMost(1.0f)
+
+            val confidence = Constants.Suggestions.USER_HISTORY_BASE_CONFIDENCE +
+                    (normalizedFrequency * Constants.Suggestions.USER_HISTORY_MAX_BOOST)
 
             Suggestion(
                 word = word,
-                confidence = 0.7f + (confidence * 0.3f), // 0.7 to 1.0 range
+                confidence = confidence,
                 source = SuggestionSource.USER_HISTORY,
                 frequency = frequency
             )
@@ -282,16 +293,22 @@ class SuggestionEngine(private val context: Context) {
      */
     private fun getDictionarySuggestions(prefix: String, language: String): List<Suggestion> {
         val trie = if (language == "en") englishTrie else kannadaTrie
-        val words = trie.findWordsWithPrefix(prefix, maxResults = 10)
+        val words = trie.findWordsWithPrefix(
+            prefix,
+            maxResults = Constants.Suggestions.MAX_INTERNAL_RESULTS
+        )
 
         return words.map { (word, frequency) ->
             // Dictionary words have medium confidence
-            val maxFrequency = 1000 // Common words have higher frequency
-            val confidence = 0.5f + ((frequency.toFloat() / maxFrequency) * 0.2f)
+            val normalizedFrequency = (frequency.toFloat() / Constants.Suggestions.MAX_DICTIONARY_FREQUENCY)
+                .coerceAtMost(1.0f)
+
+            val confidence = Constants.Suggestions.DICTIONARY_BASE_CONFIDENCE +
+                    (normalizedFrequency * Constants.Suggestions.DICTIONARY_MAX_BOOST)
 
             Suggestion(
                 word = word,
-                confidence = confidence.coerceAtMost(0.7f), // Max 0.7 for dictionary
+                confidence = confidence,
                 source = SuggestionSource.DICTIONARY,
                 frequency = frequency
             )
@@ -301,49 +318,37 @@ class SuggestionEngine(private val context: Context) {
     /**
      * Load Kannada dictionary from assets
      *
-     * Dictionary format: One word per line, optionally with frequency
-     * Example:
-     * ```
-     * ನಮಸ್ತೆ 100
-     * ಕನ್ನಡ 95
-     * ಕರ್ನಾಟಕ 80
-     * ```
+     * Uses DictionaryLoader to load words from the configured dictionary file.
+     * No hardcoded words - everything loaded from assets!
      */
     private suspend fun loadKannadaDictionary() = withContext(Dispatchers.IO) {
         try {
-            // TODO: Load from actual dictionary file
-            // For now, add some common words manually
+            val result = dictionaryLoader.loadKannadaDictionary()
 
-            val commonWords = listOf(
-                "ನಮಸ್ತೆ" to 100,
-                "ಕನ್ನಡ" to 95,
-                "ಕರ್ನಾಟಕ" to 90,
-                "ಬೆಂಗಳೂರು" to 85,
-                "ಹೌದು" to 80,
-                "ಇಲ್ಲ" to 80,
-                "ಧನ್ಯವಾದ" to 75,
-                "ನಾನು" to 70,
-                "ನೀನು" to 65,
-                "ನಮ್ಮ" to 60,
-                "ಹೇಗಿದ್ದೀರಿ" to 55,
-                "ಬನ್ನಿ" to 50
-            )
+            when (result) {
+                is Result.Success -> {
+                    val words = result.data
+                    words.forEach { (word, frequency) ->
+                        kannadaTrie.insert(word, frequency)
+                    }
 
-            commonWords.forEach { (word, frequency) ->
-                kannadaTrie.insert(word, frequency)
-            }
+                    // Also load common phrases
+                    val phrasesResult = dictionaryLoader.loadKannadaPhrases()
+                    if (phrasesResult is Result.Success) {
+                        phrasesResult.data.forEach { (phrase, frequency) ->
+                            kannadaTrie.insert(phrase, frequency)
+                        }
+                    }
 
-            // TODO: Load full dictionary from file
-            /*
-            context.assets.open("dictionaries/kannada.txt").bufferedReader().use { reader ->
-                reader.forEachLine { line ->
-                    val parts = line.split(" ")
-                    val word = parts[0]
-                    val frequency = parts.getOrNull(1)?.toIntOrNull() ?: 1
-                    kannadaTrie.insert(word, frequency)
+                    // Log statistics (optional, for debugging)
+                    val stats = dictionaryLoader.getDictionaryStats(words)
+                    println("Kannada Dictionary Loaded: ${stats.totalWords} words")
+                }
+                is Result.Error -> {
+                    // Log error but don't crash - keyboard should still work with empty dictionary
+                    println("Error loading Kannada dictionary: ${result.exception.message}")
                 }
             }
-            */
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -351,31 +356,30 @@ class SuggestionEngine(private val context: Context) {
 
     /**
      * Load English dictionary from assets
+     *
+     * Uses DictionaryLoader to load words from the configured dictionary file.
+     * No hardcoded words - everything loaded from assets!
      */
     private suspend fun loadEnglishDictionary() = withContext(Dispatchers.IO) {
         try {
-            // TODO: Load from actual dictionary file
-            // For now, add some common words manually
+            val result = dictionaryLoader.loadEnglishDictionary()
 
-            val commonWords = listOf(
-                "hello" to 100,
-                "help" to 90,
-                "happy" to 80,
-                "home" to 75,
-                "thank" to 70,
-                "thanks" to 70,
-                "good" to 65,
-                "morning" to 60,
-                "night" to 60,
-                "yes" to 55,
-                "no" to 55
-            )
+            when (result) {
+                is Result.Success -> {
+                    val words = result.data
+                    words.forEach { (word, frequency) ->
+                        englishTrie.insert(word, frequency)
+                    }
 
-            commonWords.forEach { (word, frequency) ->
-                englishTrie.insert(word, frequency)
+                    // Log statistics (optional, for debugging)
+                    val stats = dictionaryLoader.getDictionaryStats(words)
+                    println("English Dictionary Loaded: ${stats.totalWords} words")
+                }
+                is Result.Error -> {
+                    // Log error but don't crash - keyboard should still work with empty dictionary
+                    println("Error loading English dictionary: ${result.exception.message}")
+                }
             }
-
-            // TODO: Load full dictionary from file
         } catch (e: Exception) {
             e.printStackTrace()
         }

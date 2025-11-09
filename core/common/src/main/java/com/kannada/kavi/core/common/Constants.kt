@@ -50,9 +50,26 @@ object Constants {
      */
     object Suggestions {
         const val MAX_SUGGESTIONS = 5              // Show maximum 5 suggestions
+        const val MAX_INTERNAL_RESULTS = 10        // Fetch 10 candidates internally before ranking
         const val MIN_WORD_LENGTH = 2              // Start suggesting after 2 characters
         const val SUGGESTION_TIMEOUT_MS = 300L     // Wait 300 milliseconds before suggesting
         const val LEARNING_ENABLED_DEFAULT = true  // Learn from user's typing by default
+
+        // Confidence Scoring Weights (must sum to 1.0)
+        const val FREQUENCY_WEIGHT = 0.4f          // How often word is used
+        const val RECENCY_WEIGHT = 0.3f            // How recently word was used
+        const val DICTIONARY_WEIGHT = 0.3f         // Is it a common dictionary word
+
+        // Base Confidence Ranges
+        const val USER_HISTORY_BASE_CONFIDENCE = 0.7f     // User's personal words: 0.7-1.0
+        const val USER_HISTORY_MAX_BOOST = 0.3f           // Maximum boost from frequency
+        const val DICTIONARY_BASE_CONFIDENCE = 0.5f       // Dictionary words: 0.5-0.7
+        const val DICTIONARY_MAX_BOOST = 0.2f             // Maximum boost from frequency
+        const val ML_MIN_CONFIDENCE = 0.3f                // ML predictions must be >= 0.3
+
+        // Frequency Assumptions
+        const val MAX_USER_FREQUENCY = 100        // Assume max 100 uses for a user word
+        const val MAX_DICTIONARY_FREQUENCY = 1000 // Common words have higher frequency
     }
 
     /**
@@ -143,6 +160,112 @@ object Constants {
         const val LAYOUTS_FOLDER = "layouts"
         const val THEMES_FOLDER = "themes"
         const val VOICE_CACHE_FOLDER = "voice_cache"
+        const val ML_MODELS_FOLDER = "ml_models"
+        const val TRANSLITERATION_FOLDER = "transliteration"
+    }
+
+    /**
+     * Dictionary Constants
+     * These control dictionary loading and management
+     */
+    object Dictionary {
+        // Dictionary file paths (in assets folder)
+        const val KANNADA_DICT_FILE = "dictionaries/kannada_dictionary.txt"
+        const val ENGLISH_DICT_FILE = "dictionaries/english_dictionary.txt"
+        const val KANNADA_PHRASES_FILE = "dictionaries/kannada_common_phrases.txt"
+        const val DICTIONARY_METADATA_FILE = "dictionaries/dictionary_metadata.json"
+
+        // Dictionary loading limits
+        const val MAX_DICTIONARY_SIZE = 100000       // Maximum words to load
+        const val MIN_WORD_FREQUENCY = 1             // Minimum frequency to include
+        const val CACHE_SIZE = 5000                  // Cache top 5000 frequent words
+
+        // Dictionary format settings
+        const val WORD_FREQUENCY_SEPARATOR = " "     // Space separates word from frequency
+        const val COMMENT_PREFIX = "#"               // Lines starting with # are comments
+        const val ENCODING = "UTF-8"                 // File encoding
+    }
+
+    /**
+     * Machine Learning Constants
+     * These control ML model inference and predictions
+     */
+    object ML {
+        // Model file paths (in assets folder)
+        const val NEXT_WORD_MODEL = "ml_models/kannada_next_word_v1.tflite"
+        const val AUTOCOMPLETE_MODEL = "ml_models/kannada_autocomplete_v1.tflite"
+        const val MODEL_METADATA_FILE = "ml_models/model_metadata.json"
+
+        // Inference settings
+        const val MAX_CONTEXT_WORDS = 3              // Use last 3 words for context
+        const val INFERENCE_TIMEOUT_MS = 50L         // Max 50ms for ML inference
+        const val MIN_PREDICTION_CONFIDENCE = 0.3f   // Only show predictions >= 0.3 confidence
+        const val MAX_PREDICTIONS = 10               // Get top 10 predictions from model
+
+        // Model configuration
+        const val USE_GPU_ACCELERATION = true        // Use GPU if available
+        const val NUM_THREADS = 4                    // Number of CPU threads for inference
+        const val ALLOW_FP16 = true                  // Allow 16-bit floating point
+
+        // Vocabulary settings
+        const val VOCABULARY_SIZE = 50000            // Model vocabulary size
+        const val EMBEDDING_DIM = 300                // Word embedding dimensions
+        const val MAX_SEQUENCE_LENGTH = 20           // Maximum input sequence length
+        const val UNKNOWN_TOKEN = "<UNK>"            // Token for unknown words
+        const val PAD_TOKEN = "<PAD>"                // Padding token
+        const val START_TOKEN = "<START>"            // Sentence start token
+        const val END_TOKEN = "<END>"                // Sentence end token
+
+        // Model versioning
+        const val MODEL_VERSION = "1.0.0"            // Current model version
+        const val MIN_SUPPORTED_VERSION = "1.0.0"    // Minimum compatible version
+
+        // Learning settings (for future online learning)
+        const val ENABLE_ONLINE_LEARNING = false     // Disabled by default (privacy)
+        const val LEARNING_RATE = 0.001f             // Learning rate for updates
+        const val BATCH_SIZE = 32                    // Batch size for training
+    }
+
+    /**
+     * Transliteration Constants
+     * These control phonetic transliteration (English → Kannada)
+     */
+    object Transliteration {
+        // Transliteration file paths
+        const val PHONETIC_RULES_FILE = "transliteration/phonetic_rules.json"
+        const val SPECIAL_CASES_FILE = "transliteration/special_cases.json"
+        const val COMMON_MISTAKES_FILE = "transliteration/common_mistakes.json"
+
+        // Transliteration settings
+        const val MAX_CACHE_SIZE = 1000              // Cache 1000 frequent conversions
+        const val ENABLE_CACHING = true              // Enable transliteration cache
+        const val CASE_SENSITIVE = false             // Ignore case when transliterating
+
+        // Phonetic mapping modes
+        const val MODE_STRICT = "strict"             // Strict phonetic rules
+        const val MODE_RELAXED = "relaxed"           // Allow common variations
+        const val DEFAULT_MODE = MODE_RELAXED        // Default to relaxed mode
+    }
+
+    /**
+     * Typo Correction Constants
+     * These control spell checking and typo correction
+     */
+    object TypoCorrection {
+        const val MAX_EDIT_DISTANCE = 2              // Maximum Levenshtein distance
+        const val MIN_WORD_LENGTH_FOR_CORRECTION = 3 // Only correct words >= 3 chars
+        const val MAX_CORRECTION_CANDIDATES = 5      // Show top 5 corrections
+        const val CORRECTION_CONFIDENCE_THRESHOLD = 0.6f // Minimum confidence to suggest
+
+        // Edit distance costs
+        const val INSERTION_COST = 1                 // Cost of adding a character
+        const val DELETION_COST = 1                  // Cost of removing a character
+        const val SUBSTITUTION_COST = 1              // Cost of replacing a character
+        const val TRANSPOSITION_COST = 1             // Cost of swapping adjacent chars
+
+        // Kannada-specific typo patterns
+        const val ENABLE_KANNADA_TYPO_PATTERNS = true // Use Kannada-specific rules
+        const val ENABLE_PHONETIC_MATCHING = true     // Match similar sounding words
     }
 
     /**

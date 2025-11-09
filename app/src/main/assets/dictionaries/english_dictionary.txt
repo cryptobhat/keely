@@ -1,0 +1,127 @@
+# English Dictionary
+# Format: word frequency
+# This is a basic English dictionary for QWERTY layout
+
+# Common words
+the 1000
+be 950
+to 940
+of 930
+and 920
+a 910
+in 900
+that 890
+have 880
+I 870
+it 860
+for 850
+not 840
+on 830
+with 820
+he 810
+as 800
+you 790
+do 780
+at 770
+
+# Common verbs
+go 750
+make 740
+know 730
+get 720
+give 710
+think 700
+take 690
+come 680
+see 670
+want 660
+use 650
+find 640
+tell 650
+ask 630
+work 620
+seem 610
+feel 600
+try 590
+leave 580
+call 570
+
+# Common nouns
+time 700
+person 680
+year 670
+way 660
+day 650
+thing 640
+man 630
+world 620
+life 610
+hand 600
+part 590
+child 580
+eye 570
+woman 560
+place 550
+work 540
+week 530
+case 520
+point 510
+government 500
+
+# Common adjectives
+good 700
+new 690
+first 680
+last 670
+long 660
+great 650
+little 640
+own 630
+other 620
+old 610
+right 600
+big 590
+high 580
+different 570
+small 560
+large 550
+next 540
+early 530
+young 520
+important 510
+
+# Question words
+what 750
+which 740
+who 730
+when 720
+where 710
+why 700
+how 690
+
+# Pronouns
+he 800
+she 790
+it 780
+they 770
+we 760
+you 750
+me 740
+him 730
+her 720
+them 710
+us 700
+
+# Common expressions
+hello 800
+hi 780
+bye 750
+thanks 740
+thank 735
+please 730
+yes 790
+no 785
+ok 770
+okay 760
+sorry 720
+excuse 710

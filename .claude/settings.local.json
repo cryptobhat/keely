@@ -4,7 +4,12 @@
       "Bash(git commit:*)",
       "Bash(git remote add:*)",
       "Bash(git branch:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(./gradlew build:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(.gradlew assembleDebug:*)",
+      "Bash(./gradlew.bat assembleDebug)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

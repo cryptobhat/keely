@@ -49,6 +49,17 @@ dependencies {
     // Module-specific dependencies
     implementation(project(":core:common"))
 
+    // Machine Learning - TensorFlow Lite
+    implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.support)
+    implementation(libs.tensorflow.lite.gpu)  // Optional: GPU acceleration
+
+    // JSON parsing (for loading dictionaries and rules)
+    implementation(libs.gson)
+
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.truth)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
