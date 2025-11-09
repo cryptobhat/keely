@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -14,6 +15,7 @@ import com.kannada.kavi.core.layout.models.Key
 import com.kannada.kavi.core.layout.models.KeyboardRow
 import com.kannada.kavi.features.themes.DeshDesignSystem
 import com.kannada.kavi.features.themes.KeyboardTheme
+import kotlin.math.min
 
 /**
  * KeyboardView - The Visual Keyboard Component
@@ -111,6 +113,37 @@ class KeyboardView @JvmOverloads constructor(
     private val keyHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+    private val specialKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val specialKeyPressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val actionKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val actionKeyPressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val iconStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private val specialKeyTypes = setOf(
+        com.kannada.kavi.core.layout.models.KeyType.SHIFT,
+        com.kannada.kavi.core.layout.models.KeyType.DELETE,
+        com.kannada.kavi.core.layout.models.KeyType.SYMBOLS,
+        com.kannada.kavi.core.layout.models.KeyType.SYMBOLS_EXTRA,
+        com.kannada.kavi.core.layout.models.KeyType.SYMBOLS_ALT,
+        com.kannada.kavi.core.layout.models.KeyType.DEFAULT,
+        com.kannada.kavi.core.layout.models.KeyType.LANGUAGE,
+        com.kannada.kavi.core.layout.models.KeyType.EMOJI,
+        com.kannada.kavi.core.layout.models.KeyType.VOICE,
+        com.kannada.kavi.core.layout.models.KeyType.SETTINGS,
+        com.kannada.kavi.core.layout.models.KeyType.CLIPBOARD
+    )
 
     // Currently pressed key (for visual feedback)
     private var pressedKey: Key? = null
@@ -139,7 +172,7 @@ class KeyboardView @JvmOverloads constructor(
     // Spacing between keys - much tighter for modern look
     private var keyHorizontalSpacing = 3f  // Reduced from theme default for tighter layout
     private var keyVerticalSpacing = 4f   // Reduced from theme default for compact height
-    private var rowPadding = 4f           // Side padding for the keyboard
+    private var rowPadding = 4f           // Side padding for the keyboard (in px)
 
     init {
         // Apply Desh theme
@@ -179,15 +212,23 @@ class KeyboardView @JvmOverloads constructor(
      * Updates colors, sizes, and styles from theme.
      */
     private fun applyTheme(theme: KeyboardTheme) {
+        val density = resources.displayMetrics.density
+
         // Apply colors
         keyBackgroundPaint.color = theme.colors.keyNormal
         keyPressedPaint.color = theme.colors.keyPressed
         keySelectedPaint.color = theme.colors.keySelected
+        specialKeyPaint.color = DeshDesignSystem.Colors.SPECIAL_KEY_BACKGROUND
+        specialKeyPressedPaint.color = DeshDesignSystem.Colors.SPECIAL_KEY_PRESSED
+        actionKeyPaint.color = DeshDesignSystem.Colors.ACTION_KEY_BACKGROUND
+        actionKeyPressedPaint.color = DeshDesignSystem.Colors.ACTION_KEY_PRESSED
 
         keyBorderPaint.apply {
             color = theme.colors.keyBorder
-            strokeWidth = theme.shape.borderWidth * resources.displayMetrics.density
+            strokeWidth = theme.shape.borderWidth * density
         }
+
+        iconStrokePaint.strokeWidth = 2.5f * density
 
         labelPaint.apply {
             color = theme.colors.onSurface
@@ -212,7 +253,6 @@ class KeyboardView @JvmOverloads constructor(
         }
 
         // Apply responsive spacing from Desh design system
-        val density = resources.displayMetrics.density
         val (horizontalSpacing, verticalSpacing) = DeshDesignSystem.getKeySpacing(context)
         keyHorizontalSpacing = horizontalSpacing * density
         keyVerticalSpacing = verticalSpacing * density
@@ -259,7 +299,8 @@ class KeyboardView @JvmOverloads constructor(
         if (rows.isEmpty()) return
 
         // Calculate key dimensions
-        val availableWidth = width - (paddingLeft + paddingRight)
+        val horizontalInset = rowPadding
+        val availableWidth = width - (paddingLeft + paddingRight) - (horizontalInset * 2)
         val availableHeight = height - (paddingTop + paddingBottom)
 
         // Standard keyboard layout uses 10 unit width as reference
@@ -292,7 +333,7 @@ class KeyboardView @JvmOverloads constructor(
 
             // Center all rows for clean alignment
             // Removed special indentation for second row to maintain proper spacing
-            val rowStartX = paddingLeft + (availableWidth - rowActualWidth) / 2f
+            val rowStartX = paddingLeft + horizontalInset + (availableWidth - rowActualWidth) / 2f
 
             var currentX = rowStartX
 
@@ -319,6 +360,121 @@ class KeyboardView @JvmOverloads constructor(
 
             currentY += keyHeight + keyVerticalSpacing
         }
+    }
+
+    private fun drawCustomIcon(canvas: Canvas, key: Key, bounds: RectF): Boolean {
+        return when (key.type) {
+            com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
+                drawSearchIcon(canvas, bounds)
+                true
+            }
+            com.kannada.kavi.core.layout.models.KeyType.DELETE -> {
+                drawDeleteIcon(canvas, bounds)
+                true
+            }
+            com.kannada.kavi.core.layout.models.KeyType.SHIFT -> {
+                drawShiftIcon(canvas, bounds)
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun drawSearchIcon(canvas: Canvas, bounds: RectF) {
+        iconStrokePaint.style = Paint.Style.STROKE
+        iconStrokePaint.strokeWidth = bounds.height() * 0.08f
+        iconStrokePaint.color = DeshDesignSystem.Colors.ACTION_KEY_TEXT
+
+        val radius = min(bounds.width(), bounds.height()) * 0.22f
+        val centerX = bounds.centerX() - radius * 0.1f
+        val centerY = bounds.centerY() - radius * 0.1f
+        canvas.drawCircle(centerX, centerY, radius, iconStrokePaint)
+
+        val handleLength = radius * 1.2f
+        canvas.drawLine(
+            centerX + radius * 0.8f,
+            centerY + radius * 0.8f,
+            centerX + radius * 0.8f + handleLength,
+            centerY + radius * 0.8f + handleLength,
+            iconStrokePaint
+        )
+    }
+
+    private fun drawDeleteIcon(canvas: Canvas, bounds: RectF) {
+        iconStrokePaint.style = Paint.Style.STROKE
+        iconStrokePaint.strokeWidth = bounds.height() * 0.065f
+        iconStrokePaint.color = DeshDesignSystem.Colors.KEY_TEXT
+
+        val height = bounds.height() * 0.42f
+        val width = bounds.width() * 0.55f
+        val centerX = bounds.centerX()
+        val centerY = bounds.centerY()
+        val right = centerX + width / 2f
+        val left = centerX - width / 2f
+        val top = centerY - height / 2f
+        val bottom = centerY + height / 2f
+        val triangleWidth = height * 0.65f
+
+        val path = Path().apply {
+            moveTo(left - triangleWidth, centerY)
+            lineTo(left, top)
+            lineTo(right, top)
+            lineTo(right, bottom)
+            lineTo(left, bottom)
+            close()
+        }
+
+        canvas.drawPath(path, iconStrokePaint)
+
+        canvas.drawLine(
+            left + width * 0.18f,
+            top + height * 0.2f,
+            right - width * 0.15f,
+            bottom - height * 0.2f,
+            iconStrokePaint
+        )
+        canvas.drawLine(
+            left + width * 0.18f,
+            bottom - height * 0.2f,
+            right - width * 0.15f,
+            top + height * 0.2f,
+            iconStrokePaint
+        )
+    }
+
+    private fun drawShiftIcon(canvas: Canvas, bounds: RectF) {
+        iconStrokePaint.style = Paint.Style.STROKE
+        iconStrokePaint.strokeWidth = bounds.height() * 0.06f
+        iconStrokePaint.color = DeshDesignSystem.Colors.KEY_TEXT
+
+        val arrowHeight = bounds.height() * 0.42f
+        val arrowWidth = bounds.width() * 0.3f
+        val centerX = bounds.centerX()
+        val baseY = bounds.centerY() + arrowHeight * 0.35f
+
+        val path = Path().apply {
+            moveTo(centerX, baseY - arrowHeight)
+            lineTo(centerX - arrowWidth, baseY - arrowHeight * 0.35f)
+            lineTo(centerX - arrowWidth, baseY)
+            lineTo(centerX + arrowWidth, baseY)
+            lineTo(centerX + arrowWidth, baseY - arrowHeight * 0.35f)
+            close()
+        }
+
+        canvas.drawPath(path, iconStrokePaint)
+
+        val rectHeight = arrowHeight * 0.35f
+        canvas.drawRoundRect(
+            RectF(
+                centerX - arrowWidth * 0.7f,
+                baseY,
+                centerX + arrowWidth * 0.7f,
+                baseY + rectHeight
+            ),
+            rectHeight * 0.35f,
+            rectHeight * 0.35f,
+            iconStrokePaint
+        )
     }
 
     /**
@@ -431,8 +587,8 @@ class KeyboardView @JvmOverloads constructor(
         val bounds = keyBound.bounds
 
         // Create inset bounds to account for spacing (visual gap between keys)
-        // Balanced inset for keys to appear larger but still separated
-        val insetAmount = 1.5f * resources.displayMetrics.density // 1.5dp gap on each side
+        // Minimal inset to match Desh design - keys should be close together
+        val insetAmount = 1.5f * resources.displayMetrics.density // Tight spacing like Desh
 
         // Apply scale animation if this key is being animated
         val scale = if (key == animatingKey) keyPressScale else 1.0f
@@ -451,34 +607,15 @@ class KeyboardView @JvmOverloads constructor(
         )
 
         // Choose paint based on key type and state
-        val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = when {
-                // Action keys (enter, search) get special color
-                key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
-                    if (key == pressedKey) {
-                        DeshDesignSystem.Colors.ACTION_KEY_PRESSED
-                    } else {
-                        DeshDesignSystem.Colors.ACTION_KEY_BACKGROUND
-                    }
-                }
-                // Special keys (shift, delete, symbols) get tinted background
-                key.type in listOf(
-                    com.kannada.kavi.core.layout.models.KeyType.SHIFT,
-                    com.kannada.kavi.core.layout.models.KeyType.DELETE,
-                    com.kannada.kavi.core.layout.models.KeyType.SYMBOLS
-                ) -> {
-                    if (key == pressedKey) {
-                        DeshDesignSystem.Colors.SPECIAL_KEY_PRESSED
-                    } else {
-                        DeshDesignSystem.Colors.SPECIAL_KEY_BACKGROUND
-                    }
-                }
-                // Regular keys
-                key == pressedKey -> DeshDesignSystem.Colors.KEY_PRESSED
-                key == selectedKey -> DeshDesignSystem.Colors.SPECIAL_KEY_BACKGROUND
-                else -> DeshDesignSystem.Colors.KEY_BACKGROUND
-            }
+        val isActionKey = key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER
+        val isSpecialKey = key.type in specialKeyTypes
+        val backgroundPaint = when {
+            isActionKey && key == pressedKey -> actionKeyPressedPaint
+            isActionKey -> actionKeyPaint
+            isSpecialKey && key == pressedKey -> specialKeyPressedPaint
+            isSpecialKey || key == selectedKey -> specialKeyPaint
+            key == pressedKey -> keyPressedPaint
+            else -> keyBackgroundPaint
         }
 
         // Get corner radius from theme (convert dp to pixels)
@@ -515,8 +652,15 @@ class KeyboardView @JvmOverloads constructor(
             }
         }
 
-        // Draw key label (text)
-        if (key.label.isNotEmpty()) {
+        // Draw icon or label
+        val displayLabel = when {
+            key.type == com.kannada.kavi.core.layout.models.KeyType.SPACE && key.label.isBlank() -> "Desh Keyboard"
+            else -> key.label
+        }
+
+        val iconDrawn = drawCustomIcon(canvas, key, drawBounds)
+
+        if (!iconDrawn && displayLabel.isNotEmpty()) {
             // Calculate text position (center of key using drawBounds for accurate centering)
             val textX = drawBounds.centerX()
             val textY = drawBounds.centerY() - ((labelPaint.descent() + labelPaint.ascent()) / 2)
@@ -528,18 +672,13 @@ class KeyboardView @JvmOverloads constructor(
             labelPaint.textSize = optimalTextSize
 
             // Set text color based on key type and state
-            labelPaint.color = when {
-                // White text on action keys
-                key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
-                    DeshDesignSystem.Colors.ACTION_KEY_TEXT
-                }
-                // Regular text color for other keys
-                key == pressedKey -> DeshDesignSystem.Colors.KEY_TEXT
-                key == selectedKey -> DeshDesignSystem.Colors.KEY_TEXT
-                else -> DeshDesignSystem.Colors.KEY_TEXT
+            labelPaint.color = if (key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER) {
+                DeshDesignSystem.Colors.ACTION_KEY_TEXT
+            } else {
+                DeshDesignSystem.Colors.KEY_TEXT
             }
 
-            canvas.drawText(key.label, textX, textY, labelPaint)
+            canvas.drawText(displayLabel, textX, textY, labelPaint)
         }
     }
 

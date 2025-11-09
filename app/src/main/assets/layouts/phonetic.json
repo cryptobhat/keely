@@ -4,165 +4,201 @@
   "version": "1.0",
   "language": "kn",
   "transliteration_enabled": true,
+  "layers_from": "qwerty.json",
   "layers": {
-    "default": {
-      "rows": [
-        {
-          "keys": [
-            {"label": "q", "output": "q", "width": 1.0},
-            {"label": "w", "output": "w", "width": 1.0},
-            {"label": "e", "output": "e", "width": 1.0},
-            {"label": "r", "output": "r", "width": 1.0},
-            {"label": "t", "output": "t", "width": 1.0},
-            {"label": "y", "output": "y", "width": 1.0},
-            {"label": "u", "output": "u", "width": 1.0},
-            {"label": "i", "output": "i", "width": 1.0},
-            {"label": "o", "output": "o", "width": 1.0},
-            {"label": "p", "output": "p", "width": 1.0}
-          ]
-        },
-        {
-          "keys": [
-            {"label": "a", "output": "a", "width": 1.0},
-            {"label": "s", "output": "s", "width": 1.0},
-            {"label": "d", "output": "d", "width": 1.0},
-            {"label": "f", "output": "f", "width": 1.0},
-            {"label": "g", "output": "g", "width": 1.0},
-            {"label": "h", "output": "h", "width": 1.0},
-            {"label": "j", "output": "j", "width": 1.0},
-            {"label": "k", "output": "k", "width": 1.0},
-            {"label": "l", "output": "l", "width": 1.0}
-          ]
-        },
-        {
-          "keys": [
-            {"label": "⇧", "output": "", "type": "shift", "width": 1.5},
-            {"label": "z", "output": "z", "width": 1.0},
-            {"label": "x", "output": "x", "width": 1.0},
-            {"label": "c", "output": "c", "width": 1.0},
-            {"label": "v", "output": "v", "width": 1.0},
-            {"label": "b", "output": "b", "width": 1.0},
-            {"label": "n", "output": "n", "width": 1.0},
-            {"label": "m", "output": "m", "width": 1.0},
-            {"label": "⌫", "output": "", "type": "delete", "width": 1.5}
-          ]
-        },
-        {
-          "keys": [
-            {"label": "?123", "output": "", "type": "symbols", "width": 1.5},
-            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
-            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
-            {"label": "", "output": " ", "type": "space", "width": 4.0},
-            {"label": ".", "output": ".", "width": 1.0},
-            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
-          ]
-        }
-      ]
-    },
-    "shift": {
-      "rows": [
-        {
-          "keys": [
-            {"label": "Q", "output": "Q", "width": 1.0},
-            {"label": "W", "output": "W", "width": 1.0},
-            {"label": "E", "output": "E", "width": 1.0},
-            {"label": "R", "output": "R", "width": 1.0},
-            {"label": "T", "output": "T", "width": 1.0},
-            {"label": "Y", "output": "Y", "width": 1.0},
-            {"label": "U", "output": "U", "width": 1.0},
-            {"label": "I", "output": "I", "width": 1.0},
-            {"label": "O", "output": "O", "width": 1.0},
-            {"label": "P", "output": "P", "width": 1.0}
-          ]
-        },
-        {
-          "keys": [
-            {"label": "A", "output": "A", "width": 1.0},
-            {"label": "S", "output": "S", "width": 1.0},
-            {"label": "D", "output": "D", "width": 1.0},
-            {"label": "F", "output": "F", "width": 1.0},
-            {"label": "G", "output": "G", "width": 1.0},
-            {"label": "H", "output": "H", "width": 1.0},
-            {"label": "J", "output": "J", "width": 1.0},
-            {"label": "K", "output": "K", "width": 1.0},
-            {"label": "L", "output": "L", "width": 1.0}
-          ]
-        },
-        {
-          "keys": [
-            {"label": "⇧", "output": "", "type": "shift", "width": 1.5},
-            {"label": "Z", "output": "Z", "width": 1.0},
-            {"label": "X", "output": "X", "width": 1.0},
-            {"label": "C", "output": "C", "width": 1.0},
-            {"label": "V", "output": "V", "width": 1.0},
-            {"label": "B", "output": "B", "width": 1.0},
-            {"label": "N", "output": "N", "width": 1.0},
-            {"label": "M", "output": "M", "width": 1.0},
-            {"label": "⌫", "output": "", "type": "delete", "width": 1.5}
-          ]
-        },
-        {
-          "keys": [
-            {"label": "?123", "output": "", "type": "symbols", "width": 1.5},
-            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
-            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
-            {"label": "", "output": " ", "type": "space", "width": 4.0},
-            {"label": ".", "output": ".", "width": 1.0},
-            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
-          ]
-        }
-      ]
-    },
     "symbols": {
       "rows": [
         {
           "keys": [
-            {"label": "1", "output": "1", "width": 1.0},
-            {"label": "2", "output": "2", "width": 1.0},
-            {"label": "3", "output": "3", "width": 1.0},
-            {"label": "4", "output": "4", "width": 1.0},
-            {"label": "5", "output": "5", "width": 1.0},
-            {"label": "6", "output": "6", "width": 1.0},
-            {"label": "7", "output": "7", "width": 1.0},
-            {"label": "8", "output": "8", "width": 1.0},
-            {"label": "9", "output": "9", "width": 1.0},
-            {"label": "0", "output": "0", "width": 1.0}
+            {
+              "label": "1",
+              "output": "1",
+              "width": 1.0
+            },
+            {
+              "label": "2",
+              "output": "2",
+              "width": 1.0
+            },
+            {
+              "label": "3",
+              "output": "3",
+              "width": 1.0
+            },
+            {
+              "label": "4",
+              "output": "4",
+              "width": 1.0
+            },
+            {
+              "label": "5",
+              "output": "5",
+              "width": 1.0
+            },
+            {
+              "label": "6",
+              "output": "6",
+              "width": 1.0
+            },
+            {
+              "label": "7",
+              "output": "7",
+              "width": 1.0
+            },
+            {
+              "label": "8",
+              "output": "8",
+              "width": 1.0
+            },
+            {
+              "label": "9",
+              "output": "9",
+              "width": 1.0
+            },
+            {
+              "label": "0",
+              "output": "0",
+              "width": 1.0
+            }
           ]
         },
         {
           "keys": [
-            {"label": "@", "output": "@", "width": 1.0},
-            {"label": "#", "output": "#", "width": 1.0},
-            {"label": "₹", "output": "₹", "width": 1.0},
-            {"label": "%", "output": "%", "width": 1.0},
-            {"label": "&", "output": "&", "width": 1.0},
-            {"label": "-", "output": "-", "width": 1.0},
-            {"label": "+", "output": "+", "width": 1.0},
-            {"label": "(", "output": "(", "width": 1.0},
-            {"label": ")", "output": ")", "width": 1.0}
+            {
+              "label": "@",
+              "output": "@",
+              "width": 1.0
+            },
+            {
+              "label": "#",
+              "output": "#",
+              "width": 1.0
+            },
+            {
+              "label": "₹",
+              "output": "₹",
+              "width": 1.0
+            },
+            {
+              "label": "%",
+              "output": "%",
+              "width": 1.0
+            },
+            {
+              "label": "&",
+              "output": "&",
+              "width": 1.0
+            },
+            {
+              "label": "-",
+              "output": "-",
+              "width": 1.0
+            },
+            {
+              "label": "+",
+              "output": "+",
+              "width": 1.0
+            },
+            {
+              "label": "(",
+              "output": "(",
+              "width": 1.0
+            },
+            {
+              "label": ")",
+              "output": ")",
+              "width": 1.0
+            }
           ]
         },
         {
           "keys": [
-            {"label": "=\\<", "output": "", "type": "symbols_alt", "width": 1.5},
-            {"label": "*", "output": "*", "width": 1.0},
-            {"label": "\"", "output": "\"", "width": 1.0},
-            {"label": "'", "output": "'", "width": 1.0},
-            {"label": ":", "output": ":", "width": 1.0},
-            {"label": ";", "output": ";", "width": 1.0},
-            {"label": "!", "output": "!", "width": 1.0},
-            {"label": "?", "output": "?", "width": 1.0},
-            {"label": "⌫", "output": "", "type": "delete", "width": 1.5}
+            {
+              "label": "=\\<",
+              "output": "",
+              "type": "symbols_alt",
+              "width": 1.5
+            },
+            {
+              "label": "*",
+              "output": "*",
+              "width": 1.0
+            },
+            {
+              "label": "\"",
+              "output": "\"",
+              "width": 1.0
+            },
+            {
+              "label": "'",
+              "output": "'",
+              "width": 1.0
+            },
+            {
+              "label": ":",
+              "output": ":",
+              "width": 1.0
+            },
+            {
+              "label": ";",
+              "output": ";",
+              "width": 1.0
+            },
+            {
+              "label": "!",
+              "output": "!",
+              "width": 1.0
+            },
+            {
+              "label": "?",
+              "output": "?",
+              "width": 1.0
+            },
+            {
+              "label": "⌫",
+              "output": "",
+              "type": "delete",
+              "width": 1.5
+            }
           ]
         },
         {
           "keys": [
-            {"label": "ABC", "output": "", "type": "default", "width": 1.5},
-            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
-            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
-            {"label": "", "output": " ", "type": "space", "width": 4.0},
-            {"label": ",", "output": ",", "width": 1.0},
-            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
+            {
+              "label": "ABC",
+              "output": "",
+              "type": "default",
+              "width": 1.5
+            },
+            {
+              "label": "🌐",
+              "output": "",
+              "type": "language",
+              "width": 1.0
+            },
+            {
+              "label": "😊",
+              "output": "",
+              "type": "emoji",
+              "width": 1.0
+            },
+            {
+              "label": "",
+              "output": " ",
+              "type": "space",
+              "width": 4.0
+            },
+            {
+              "label": ",",
+              "output": ",",
+              "width": 1.0
+            },
+            {
+              "label": "↵",
+              "output": "\n",
+              "type": "enter",
+              "width": 1.5
+            }
           ]
         }
       ]
@@ -171,106 +207,204 @@
       "rows": [
         {
           "keys": [
-            {"label": "~", "output": "~", "width": 1.0},
-            {"label": "`", "output": "`", "width": 1.0},
-            {"label": "|", "output": "|", "width": 1.0},
-            {"label": "•", "output": "•", "width": 1.0},
-            {"label": "√", "output": "√", "width": 1.0},
-            {"label": "π", "output": "π", "width": 1.0},
-            {"label": "÷", "output": "÷", "width": 1.0},
-            {"label": "×", "output": "×", "width": 1.0},
-            {"label": "¶", "output": "¶", "width": 1.0},
-            {"label": "∆", "output": "∆", "width": 1.0}
+            {
+              "label": "~",
+              "output": "~",
+              "width": 1.0
+            },
+            {
+              "label": "`",
+              "output": "`",
+              "width": 1.0
+            },
+            {
+              "label": "|",
+              "output": "|",
+              "width": 1.0
+            },
+            {
+              "label": "•",
+              "output": "•",
+              "width": 1.0
+            },
+            {
+              "label": "√",
+              "output": "√",
+              "width": 1.0
+            },
+            {
+              "label": "π",
+              "output": "π",
+              "width": 1.0
+            },
+            {
+              "label": "÷",
+              "output": "÷",
+              "width": 1.0
+            },
+            {
+              "label": "×",
+              "output": "×",
+              "width": 1.0
+            },
+            {
+              "label": "¶",
+              "output": "¶",
+              "width": 1.0
+            },
+            {
+              "label": "∆",
+              "output": "∆",
+              "width": 1.0
+            }
           ]
         },
         {
           "keys": [
-            {"label": "$", "output": "$", "width": 1.0},
-            {"label": "€", "output": "€", "width": 1.0},
-            {"label": "£", "output": "£", "width": 1.0},
-            {"label": "¢", "output": "¢", "width": 1.0},
-            {"label": "^", "output": "^", "width": 1.0},
-            {"label": "°", "output": "°", "width": 1.0},
-            {"label": "=", "output": "=", "width": 1.0},
-            {"label": "{", "output": "{", "width": 1.0},
-            {"label": "}", "output": "}", "width": 1.0}
+            {
+              "label": "$",
+              "output": "$",
+              "width": 1.0
+            },
+            {
+              "label": "€",
+              "output": "€",
+              "width": 1.0
+            },
+            {
+              "label": "£",
+              "output": "£",
+              "width": 1.0
+            },
+            {
+              "label": "¢",
+              "output": "¢",
+              "width": 1.0
+            },
+            {
+              "label": "^",
+              "output": "^",
+              "width": 1.0
+            },
+            {
+              "label": "°",
+              "output": "°",
+              "width": 1.0
+            },
+            {
+              "label": "=",
+              "output": "=",
+              "width": 1.0
+            },
+            {
+              "label": "{",
+              "output": "{",
+              "width": 1.0
+            },
+            {
+              "label": "}",
+              "output": "}",
+              "width": 1.0
+            }
           ]
         },
         {
           "keys": [
-            {"label": "?123", "output": "", "type": "symbols", "width": 1.5},
-            {"label": "\\", "output": "\\", "width": 1.0},
-            {"label": "©", "output": "©", "width": 1.0},
-            {"label": "®", "output": "®", "width": 1.0},
-            {"label": "™", "output": "™", "width": 1.0},
-            {"label": "[", "output": "[", "width": 1.0},
-            {"label": "]", "output": "]", "width": 1.0},
-            {"label": "<", "output": "<", "width": 1.0},
-            {"label": ">", "output": ">", "width": 1.0},
-            {"label": "⌫", "output": "", "type": "delete", "width": 1.0}
+            {
+              "label": "?123",
+              "output": "",
+              "type": "symbols",
+              "width": 1.5
+            },
+            {
+              "label": "\\",
+              "output": "\\",
+              "width": 1.0
+            },
+            {
+              "label": "©",
+              "output": "©",
+              "width": 1.0
+            },
+            {
+              "label": "®",
+              "output": "®",
+              "width": 1.0
+            },
+            {
+              "label": "™",
+              "output": "™",
+              "width": 1.0
+            },
+            {
+              "label": "[",
+              "output": "[",
+              "width": 1.0
+            },
+            {
+              "label": "]",
+              "output": "]",
+              "width": 1.0
+            },
+            {
+              "label": "<",
+              "output": "<",
+              "width": 1.0
+            },
+            {
+              "label": ">",
+              "output": ">",
+              "width": 1.0
+            },
+            {
+              "label": "⌫",
+              "output": "",
+              "type": "delete",
+              "width": 1.0
+            }
           ]
         },
         {
           "keys": [
-            {"label": "ABC", "output": "", "type": "default", "width": 1.5},
-            {"label": "🌐", "output": "", "type": "language", "width": 1.0},
-            {"label": "😊", "output": "", "type": "emoji", "width": 1.0},
-            {"label": "", "output": " ", "type": "space", "width": 4.0},
-            {"label": "_", "output": "_", "width": 1.0},
-            {"label": "↵", "output": "\n", "type": "enter", "width": 1.5}
+            {
+              "label": "ABC",
+              "output": "",
+              "type": "default",
+              "width": 1.5
+            },
+            {
+              "label": "🌐",
+              "output": "",
+              "type": "language",
+              "width": 1.0
+            },
+            {
+              "label": "😊",
+              "output": "",
+              "type": "emoji",
+              "width": 1.0
+            },
+            {
+              "label": "",
+              "output": " ",
+              "type": "space",
+              "width": 4.0
+            },
+            {
+              "label": "_",
+              "output": "_",
+              "width": 1.0
+            },
+            {
+              "label": "↵",
+              "output": "\n",
+              "type": "enter",
+              "width": 1.5
+            }
           ]
         }
       ]
     }
   },
-  "transliteration_rules": {
-    "a": "ಅ",
-    "aa": "ಆ",
-    "i": "ಇ",
-    "ee": "ಈ",
-    "u": "ಉ",
-    "uu": "ಊ",
-    "e": "ಎ",
-    "ee": "ಏ",
-    "ai": "ಐ",
-    "o": "ಒ",
-    "oo": "ಓ",
-    "au": "ಔ",
-    "ka": "ಕ",
-    "kha": "ಖ",
-    "ga": "ಗ",
-    "gha": "ಘ",
-    "nga": "ಙ",
-    "cha": "ಚ",
-    "chha": "ಛ",
-    "ja": "ಜ",
-    "jha": "ಝ",
-    "nya": "ಞ",
-    "ta": "ಟ",
-    "tha": "ಠ",
-    "da": "ಡ",
-    "dha": "ಢ",
-    "na": "ಣ",
-    "ta": "ತ",
-    "tha": "ಥ",
-    "da": "ದ",
-    "dha": "ಧ",
-    "na": "ನ",
-    "pa": "ಪ",
-    "pha": "ಫ",
-    "ba": "ಬ",
-    "bha": "ಭ",
-    "ma": "ಮ",
-    "ya": "ಯ",
-    "ra": "ರ",
-    "la": "ಲ",
-    "va": "ವ",
-    "sha": "ಶ",
-    "sha": "ಷ",
-    "sa": "ಸ",
-    "ha": "ಹ",
-    "la": "ಳ",
-    "namaste": "ನಮಸ್ತೆ",
-    "kannada": "ಕನ್ನಡ"
-  }
+  "transliteration_rules_file": "transliteration/phonetic_rules.json"
 }

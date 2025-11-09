@@ -16,16 +16,16 @@ import java.io.IOException
  * ThemeRepository - Theme Management and Persistence
  *
  * Manages keyboard themes:
- * - Load built-in themes from assets
+ * - Load built-in themes
  * - Save/load user-selected theme
  * - Generate dynamic themes from wallpaper
  * - Cache themes for performance
  *
  * THEME SOURCES:
  * =============
- * 1. **Built-in themes**: JSON files in assets/themes/
- *    - material_you_light.json
- *    - material_you_dark.json
+ * 1. **Built-in themes**: Material You defaults defined in Kotlin
+ *    - KeyboardTheme.defaultLight()
+ *    - KeyboardTheme.defaultDark()
  *
  * 2. **Dynamic themes**: Generated from wallpaper (Android 12+)
  *    - Extracts colors from wallpaper
@@ -122,7 +122,7 @@ class ThemeRepository(
     /**
      * Load a theme by ID
      *
-     * Checks cache first, then assets, then defaults.
+     * Checks cache first, then built-in defaults, then optional asset overrides.
      *
      * @param themeId Theme identifier
      * @return Theme or error
@@ -134,11 +134,11 @@ class ThemeRepository(
                 return@withContext Result.Success(it)
             }
 
-            // Load from assets
+            // Load built-in theme or optional asset override
             val theme = when (themeId) {
-                THEME_LIGHT -> loadThemeFromAssets("material_you_light.json")
+                THEME_LIGHT -> loadThemeFromAssets("$themeId.json")
                     ?: KeyboardTheme.defaultLight()
-                THEME_DARK -> loadThemeFromAssets("material_you_dark.json")
+                THEME_DARK -> loadThemeFromAssets("$themeId.json")
                     ?: KeyboardTheme.defaultDark()
                 else -> loadThemeFromAssets("$themeId.json")
                     ?: KeyboardTheme.defaultLight()
@@ -201,7 +201,7 @@ class ThemeRepository(
      */
     suspend fun clearCustomTheme(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            preferences.remove(PREF_CUSTOM_THEME)
+            preferences.putString(PREF_CUSTOM_THEME, null)
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(e)

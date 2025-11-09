@@ -94,6 +94,12 @@ class SuggestionStripView @JvmOverloads constructor(
     private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+    private val selectionIndicatorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val bottomBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
@@ -115,6 +121,7 @@ class SuggestionStripView @JvmOverloads constructor(
     private var dividerWidth = 2f
     private var horizontalPadding = 16f
     private var verticalPadding = 12f
+    private var chipCornerRadius = 16f
 
     init {
         // Apply default theme
@@ -140,9 +147,12 @@ class SuggestionStripView @JvmOverloads constructor(
 
         // Apply colors
         backgroundPaint.color = theme.colors.suggestionBackground
-        suggestionBackgroundPaint.color = theme.colors.surface
+        suggestionBackgroundPaint.color = theme.colors.suggestionBackground
         pressedBackgroundPaint.color = theme.colors.keyPressed
         dividerPaint.color = theme.colors.suggestionDivider
+        selectionIndicatorPaint.color = theme.colors.primary
+        bottomBorderPaint.color = theme.colors.suggestionDivider
+        chipCornerRadius = 18f * density
 
         // Apply typography
         textPaint.apply {
@@ -162,7 +172,7 @@ class SuggestionStripView @JvmOverloads constructor(
         }
 
         // Apply spacing
-        dividerWidth = 1f * density
+        dividerWidth = 0f
         horizontalPadding = theme.spacing.containerPadding * density
         verticalPadding = theme.spacing.containerPadding * density
     }
@@ -258,6 +268,16 @@ class SuggestionStripView @JvmOverloads constructor(
         // Draw background
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
 
+        // Bottom border to separate from keyboard rows
+        val borderHeight = resources.displayMetrics.density
+        canvas.drawRect(
+            0f,
+            height.toFloat() - borderHeight,
+            width.toFloat(),
+            height.toFloat(),
+            bottomBorderPaint
+        )
+
         // If no suggestions, show nothing
         if (suggestions.isEmpty()) {
             return
@@ -266,18 +286,6 @@ class SuggestionStripView @JvmOverloads constructor(
         // Draw each suggestion
         suggestionBounds.forEachIndexed { index, suggestionBound ->
             drawSuggestion(canvas, suggestionBound, index)
-
-            // Draw divider between suggestions (except after last one)
-            if (index < suggestionBounds.size - 1) {
-                val dividerX = suggestionBound.bounds.right
-                canvas.drawRect(
-                    dividerX,
-                    paddingTop.toFloat(),
-                    dividerX + dividerWidth,
-                    height.toFloat() - paddingBottom,
-                    dividerPaint
-                )
-            }
         }
     }
 
@@ -291,38 +299,48 @@ class SuggestionStripView @JvmOverloads constructor(
     private fun drawSuggestion(canvas: Canvas, suggestionBound: SuggestionBound, index: Int) {
         val suggestion = suggestionBound.suggestion
         val bounds = suggestionBound.bounds
+        val isPrimary = index == 0
 
-        // Choose background paint based on pressed state
+        val chipRect = RectF(
+            bounds.left + horizontalPadding / 2f,
+            bounds.top + verticalPadding / 2f,
+            bounds.right - horizontalPadding / 2f,
+            bounds.bottom - verticalPadding / 2f
+        )
+
         val bgPaint = if (suggestion == pressedSuggestion) {
             pressedBackgroundPaint
         } else {
             suggestionBackgroundPaint
         }
 
-        // Draw suggestion background
-        canvas.drawRect(bounds, bgPaint)
+        canvas.drawRoundRect(chipRect, chipCornerRadius, chipCornerRadius, bgPaint)
 
-        // Choose text paint based on confidence
         val textPaint = when {
-            suggestion.isHighConfidence() -> highConfidenceTextPaint
+            isPrimary -> highConfidenceTextPaint
             suggestion.isLowConfidence() -> lowConfidenceTextPaint
             else -> this.textPaint
         }
 
-        // First suggestion (index 0) always gets bold if not low confidence
-        val finalTextPaint = if (index == 0 && !suggestion.isLowConfidence()) {
-            highConfidenceTextPaint
-        } else {
+        val textX = chipRect.centerX()
+        val textY = chipRect.centerY() - ((textPaint.descent() + textPaint.ascent()) / 2)
+        val displayText = truncateText(
+            suggestion.word,
+            chipRect.width() - horizontalPadding,
             textPaint
+        )
+        canvas.drawText(displayText, textX, textY, textPaint)
+
+        if (isPrimary) {
+            val indicatorHeight = chipRect.height() * 0.1f
+            val indicatorRect = RectF(
+                chipRect.left + horizontalPadding / 2f,
+                chipRect.bottom - indicatorHeight * 1.2f,
+                chipRect.right - horizontalPadding / 2f,
+                chipRect.bottom - indicatorHeight * 0.1f
+            )
+            canvas.drawRoundRect(indicatorRect, indicatorHeight, indicatorHeight, selectionIndicatorPaint)
         }
-
-        // Draw suggestion text
-        val textX = bounds.centerX()
-        val textY = bounds.centerY() - ((finalTextPaint.descent() + finalTextPaint.ascent()) / 2)
-
-        // Truncate text if too long
-        val displayText = truncateText(suggestion.word, bounds.width() - horizontalPadding * 2, finalTextPaint)
-        canvas.drawText(displayText, textX, textY, finalTextPaint)
     }
 
     /**

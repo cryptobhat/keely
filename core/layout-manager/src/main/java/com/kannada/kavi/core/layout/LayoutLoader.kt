@@ -2,6 +2,7 @@ package com.kannada.kavi.core.layout
 
 import android.content.Context
 import com.google.gson.Gson
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.kannada.kavi.core.common.Result
@@ -139,15 +140,23 @@ class LayoutLoader(private val context: Context) {
         val transliterationEnabled = jsonObject.get("transliteration_enabled")?.asBoolean ?: false
 
         // Extract layers (the heart of the layout!)
-        val layersJson = jsonObject.getAsJsonObject("layers")
-        val layers = parseLayers(layersJson)
+        val layers = parseLayersWithInheritance(jsonObject, fileName)
+        if (layers.isEmpty()) {
+            throw IllegalStateException("Layout '$fileName' must define layers or inherit them using 'layers_from'")
+        }
 
         // Extract transliteration rules (if enabled)
-        val transliterationRules = if (transliterationEnabled && jsonObject.has("transliteration_rules")) {
-            parseTransliterationRules(jsonObject.getAsJsonObject("transliteration_rules"))
-        } else {
-            null
-        }
+        val transliterationRules = if (transliterationEnabled) {
+            when {
+                jsonObject.has("transliteration_rules") ->
+                    parseTransliterationRules(jsonObject.getAsJsonObject("transliteration_rules"))
+                jsonObject.has("transliteration_rules_file") ->
+                    loadTransliterationRulesFromFile(
+                        resolveAssetPath(fileName, jsonObject.get("transliteration_rules_file").asString)
+                    )
+                else -> null
+            }
+        } else null
 
         // Create and return the KeyboardLayout
         return KeyboardLayout(
@@ -207,6 +216,41 @@ class LayoutLoader(private val context: Context) {
             layers[layerName] = rows
         }
 
+        return layers
+    }
+
+    /**
+     * Parse layers from current layout, optionally inheriting from another layout file.
+     */
+    private fun parseLayersWithInheritance(
+        jsonObject: JsonObject,
+        fileName: String,
+        visited: MutableSet<String> = mutableSetOf()
+    ): Map<String, List<KeyboardRow>> {
+        if (visited.contains(fileName)) {
+            throw IllegalStateException("Circular layer inheritance detected at '$fileName'")
+        }
+
+        val layers = mutableMapOf<String, List<KeyboardRow>>()
+        visited.add(fileName)
+
+        val inheritKey = when {
+            jsonObject.has("layers_from") -> "layers_from"
+            jsonObject.has("base_layout") -> "base_layout"
+            else -> null
+        }
+
+        if (inheritKey != null) {
+            val basePath = resolveAssetPath(fileName, jsonObject.get(inheritKey).asString)
+            val baseJson = JsonParser.parseString(readJsonFromAssets(basePath)).asJsonObject
+            layers.putAll(parseLayersWithInheritance(baseJson, basePath, visited))
+        }
+
+        if (jsonObject.has("layers")) {
+            layers.putAll(parseLayers(jsonObject.getAsJsonObject("layers")))
+        }
+
+        visited.remove(fileName)
         return layers
     }
 
@@ -284,10 +328,52 @@ class LayoutLoader(private val context: Context) {
         val rules = mutableMapOf<String, String>()
 
         for ((key, value) in rulesJson.entrySet()) {
-            rules[key] = value.asString
+            rules[key.lowercase()] = value.asString
         }
 
         return rules
+    }
+
+    /**
+     * Load transliteration rules from an external file (can contain nested objects).
+     */
+    private fun loadTransliterationRulesFromFile(path: String): Map<String, String>? {
+        return try {
+            val jsonElement = JsonParser.parseString(readJsonFromAssets(path))
+            val rules = mutableMapOf<String, String>()
+            collectTransliterationRules(jsonElement, rules)
+            if (rules.isEmpty()) null else rules
+        } catch (e: Exception) {
+            println("Failed to load transliteration rules from '$path': ${e.message}")
+            null
+        }
+    }
+
+    private fun collectTransliterationRules(element: JsonElement, out: MutableMap<String, String>) {
+        when {
+            element.isJsonObject -> {
+                element.asJsonObject.entrySet().forEach { (key, value) ->
+                    if (value.isJsonPrimitive && value.asJsonPrimitive.isString) {
+                        out[key.lowercase()] = value.asString
+                    } else {
+                        collectTransliterationRules(value, out)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Resolve a relative asset path based on the current file location.
+     */
+    private fun resolveAssetPath(currentFile: String, relativePath: String): String {
+        val cleanedRelativePath = relativePath.trim().trimStart('/')
+        if (cleanedRelativePath.contains("/")) {
+            return cleanedRelativePath
+        }
+
+        val baseDir = currentFile.substringBeforeLast("/", missingDelimiterValue = "")
+        return if (baseDir.isEmpty()) cleanedRelativePath else "$baseDir/$cleanedRelativePath"
     }
 
     /**

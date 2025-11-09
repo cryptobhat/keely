@@ -2,9 +2,6 @@ package com.kannada.kavi.data.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * KeyboardPreferences - Centralized Preference Management
@@ -33,10 +30,7 @@ import javax.inject.Singleton
  *    - Swipe typing
  *    - Voice input
  */
-@Singleton
-class KeyboardPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
+class KeyboardPreferences(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(
         PREFS_NAME,
         Context.MODE_PRIVATE
