@@ -109,14 +109,63 @@ class SuggestionStripView @JvmOverloads constructor(
 
     private val lowConfidenceTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        textSize = 36f
-        color = 0xFF757575.toInt() // Gray
     }
 
-    // Spacing
-    private val dividerWidth = 2f
-    private val horizontalPadding = 16f
-    private val verticalPadding = 12f
+    // Spacing (from theme)
+    private var dividerWidth = 2f
+    private var horizontalPadding = 16f
+    private var verticalPadding = 12f
+
+    init {
+        // Apply default theme
+        applyTheme(theme)
+    }
+
+    /**
+     * Set Material You theme
+     *
+     * @param theme KeyboardTheme to apply
+     */
+    fun setTheme(theme: KeyboardTheme) {
+        this.theme = theme
+        applyTheme(theme)
+        invalidate()
+    }
+
+    /**
+     * Apply theme to all Paint objects
+     */
+    private fun applyTheme(theme: KeyboardTheme) {
+        val density = resources.displayMetrics.density
+
+        // Apply colors
+        backgroundPaint.color = theme.colors.suggestionBackground
+        suggestionBackgroundPaint.color = theme.colors.surface
+        pressedBackgroundPaint.color = theme.colors.keyPressed
+        dividerPaint.color = theme.colors.suggestionDivider
+
+        // Apply typography
+        textPaint.apply {
+            color = theme.colors.suggestionText
+            textSize = theme.typography.bodySize * density
+        }
+
+        highConfidenceTextPaint.apply {
+            color = theme.colors.suggestionText
+            textSize = theme.typography.buttonSize * density
+            isFakeBoldText = true
+        }
+
+        lowConfidenceTextPaint.apply {
+            color = theme.colors.onSurfaceVariant
+            textSize = theme.typography.captionSize * density
+        }
+
+        // Apply spacing
+        dividerWidth = 1f * density
+        horizontalPadding = theme.spacing.containerPadding * density
+        verticalPadding = theme.spacing.containerPadding * density
+    }
 
     /**
      * Set suggestions to display

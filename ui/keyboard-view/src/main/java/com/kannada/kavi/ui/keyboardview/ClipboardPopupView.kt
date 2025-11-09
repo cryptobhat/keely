@@ -8,6 +8,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.kannada.kavi.features.clipboard.models.ClipboardItem
+import com.kannada.kavi.features.themes.KeyboardTheme
 import kotlin.math.max
 import kotlin.math.min
 
@@ -84,57 +85,106 @@ class ClipboardPopupView @JvmOverloads constructor(
     private var onPinToggleListener: ((ClipboardItem) -> Unit)? = null
     private var onDeleteListener: ((ClipboardItem) -> Unit)? = null
 
-    // Paint objects
+    // Theme (Material You design system)
+    private var theme: KeyboardTheme = KeyboardTheme.defaultLight()
+
+    // Paint objects (configured by theme)
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFFFFFFF.toInt() // White
     }
 
     private val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFF6200EE.toInt() // Material purple
     }
 
     private val itemBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFFFFFFF.toInt() // White
     }
 
     private val pressedItemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFE0E0E0.toInt() // Light gray
     }
 
     private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = 0xFFE0E0E0.toInt() // Light gray
     }
 
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 42f
-        color = 0xFF212121.toInt() // Almost black
-    }
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val headerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 48f
-        color = 0xFFFFFFFF.toInt() // White
         isFakeBoldText = true
     }
 
-    private val timestampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 32f
-        color = 0xFF757575.toInt() // Gray
+    private val timestampPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // Dimensions (from theme)
+    private var headerHeight = 180f
+    private var itemHeight = 200f
+    private var itemPadding = 32f
+    private var dividerHeight = 2f
+
+    init {
+        // Apply default theme
+        applyTheme(theme)
     }
 
-    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 52f
+    /**
+     * Set Material You theme
+     *
+     * @param theme KeyboardTheme to apply
+     */
+    fun setTheme(theme: KeyboardTheme) {
+        this.theme = theme
+        applyTheme(theme)
+        invalidate()
     }
 
-    // Dimensions
-    private val headerHeight = 180f
-    private val itemHeight = 200f
-    private val itemPadding = 32f
-    private val dividerHeight = 2f
+    /**
+     * Apply theme to all Paint objects
+     *
+     * Material You styling for clipboard popup:
+     * - Background: #F5F5F5 (from design system)
+     * - Cards: #FFFFFF with 12dp corners
+     * - Border: #E0E0E0
+     */
+    private fun applyTheme(theme: KeyboardTheme) {
+        val density = resources.displayMetrics.density
+
+        // Apply colors
+        backgroundPaint.color = theme.colors.clipboardBackground
+        headerPaint.color = theme.colors.primary
+        itemBackgroundPaint.color = theme.colors.clipboardCard
+        pressedItemPaint.color = theme.colors.keyPressed
+        dividerPaint.color = theme.colors.clipboardBorder
+
+        // Apply typography
+        textPaint.apply {
+            textSize = theme.typography.bodySize * density
+            color = theme.colors.onSurface
+        }
+
+        headerTextPaint.apply {
+            textSize = theme.typography.headingSize * density
+            color = theme.colors.onPrimary
+            isFakeBoldText = true
+        }
+
+        timestampPaint.apply {
+            textSize = theme.typography.captionSize * density
+            color = theme.colors.onSurfaceVariant
+        }
+
+        iconPaint.apply {
+            textSize = theme.typography.headingSize * density
+            color = theme.colors.primary
+        }
+
+        // Apply spacing
+        itemPadding = theme.spacing.containerPadding * density * 2
+        dividerHeight = 1f * density
+    }
 
     /**
      * Set clipboard items to display
