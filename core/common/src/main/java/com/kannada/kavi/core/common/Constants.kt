@@ -242,6 +242,9 @@ object Constants {
         const val MAX_CACHE_SIZE = 1000              // Cache 1000 frequent conversions
         const val ENABLE_CACHING = true              // Enable transliteration cache
         const val CASE_SENSITIVE = false             // Ignore case when transliterating
+        const val TRANSLITERATION_CONFIDENCE = 0.75f // Base confidence for transliteration
+        const val MIN_WORD_LENGTH = 2                // Min chars to transliterate
+        const val MAX_WORD_LENGTH = 50               // Max chars to transliterate
 
         // Phonetic mapping modes
         const val MODE_STRICT = "strict"             // Strict phonetic rules

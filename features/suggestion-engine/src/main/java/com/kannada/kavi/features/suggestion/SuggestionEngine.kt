@@ -3,11 +3,13 @@ package com.kannada.kavi.features.suggestion
 import android.content.Context
 import com.kannada.kavi.core.common.Constants
 import com.kannada.kavi.core.common.Result
+import com.kannada.kavi.features.suggestion.correction.TypoCorrector
 import com.kannada.kavi.features.suggestion.dictionary.DictionaryLoader
 import com.kannada.kavi.features.suggestion.ml.ContextManager
 import com.kannada.kavi.features.suggestion.ml.MLPredictor
 import com.kannada.kavi.features.suggestion.models.Suggestion
 import com.kannada.kavi.features.suggestion.models.SuggestionSource
+import com.kannada.kavi.features.suggestion.transliteration.TransliterationEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -81,11 +83,17 @@ class SuggestionEngine(private val context: Context) {
     // User's personal word history (learned over time)
     private val userHistoryTrie = Trie()
 
-    // ML-based prediction (NEW!)
+    // ML-based prediction
     private val mlPredictor = MLPredictor(context)
 
-    // Context manager for tracking typing history (NEW!)
+    // Context manager for tracking typing history
     private val contextManager = ContextManager()
+
+    // Transliteration engine for phonetic conversion (NEW!)
+    private val transliterationEngine = TransliterationEngine(context)
+
+    // Typo corrector for spell checking (NEW!)
+    private val typoCorrector = TypoCorrector(kannadaTrie, englishTrie)
 
     // Coroutine scope for async operations
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -119,7 +127,7 @@ class SuggestionEngine(private val context: Context) {
                 // Load user's personal history
                 loadUserHistory()
 
-                // Initialize ML predictor (NEW!)
+                // Initialize ML predictor
                 // Note: This may fail if model file not found - that's OK!
                 // Keyboard will still work with dictionary-based suggestions
                 val mlResult = mlPredictor.initialize()
@@ -130,6 +138,18 @@ class SuggestionEngine(private val context: Context) {
                     is Result.Error -> {
                         println("ML predictor failed to initialize: ${mlResult.exception.message}")
                         println("Continuing without ML predictions (dictionary-based suggestions still work)")
+                    }
+                }
+
+                // Initialize transliteration engine (NEW!)
+                val transliterationResult = transliterationEngine.initialize()
+                when (transliterationResult) {
+                    is Result.Success -> {
+                        println("Transliteration engine initialized successfully")
+                    }
+                    is Result.Error -> {
+                        println("Transliteration engine failed to initialize: ${transliterationResult.exception.message}")
+                        println("Continuing without transliteration (other suggestions still work)")
                     }
                 }
 
@@ -175,16 +195,21 @@ class SuggestionEngine(private val context: Context) {
         val dictionarySuggestions = getDictionarySuggestions(currentWord, language)
         suggestions.addAll(dictionarySuggestions)
 
-        // 3. Get ML-based predictions (NEW!)
+        // 3. Get ML-based predictions
         // Only if we have enough context and ML is ready
         if (mlPredictor.isReady() && !contextManager.isEmpty()) {
             val mlSuggestions = getMLPredictions(currentWord, language)
             suggestions.addAll(mlSuggestions)
         }
 
-        // 4. TODO: Get typo corrections
-        // val corrections = getTypoCorrections(currentWord, language)
-        // suggestions.addAll(corrections)
+        // 4. Get transliteration suggestions (NEW!)
+        // Only for phonetic layout when typing English
+        val transliterationSuggestions = getTransliterationSuggestions(currentWord, language)
+        suggestions.addAll(transliterationSuggestions)
+
+        // 5. Get typo corrections (NEW!)
+        val typoCorrections = getTypoCorrections(currentWord, language)
+        suggestions.addAll(typoCorrections)
 
         // Remove duplicates (keep highest confidence)
         val uniqueSuggestions = suggestions
@@ -487,6 +512,92 @@ class SuggestionEngine(private val context: Context) {
             }
         } catch (e: Exception) {
             println("Error getting ML predictions: ${e.message}")
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get transliteration suggestions (NEW!)
+     *
+     * Converts English text to Kannada phonetically.
+     * Only applies when typing in English on phonetic layout.
+     *
+     * @param currentWord The word being typed
+     * @param language Current language
+     * @return List of transliteration suggestions
+     */
+    private fun getTransliterationSuggestions(currentWord: String, language: String): List<Suggestion> {
+        return try {
+            // Only transliterate if:
+            // 1. Word is long enough
+            // 2. Not already in Kannada script
+            // 3. Language is Kannada (phonetic layout)
+            if (currentWord.length < Constants.Transliteration.MIN_WORD_LENGTH) {
+                return emptyList()
+            }
+
+            if (transliterationEngine.isKannada(currentWord)) {
+                return emptyList()
+            }
+
+            if (language != "kn") {
+                return emptyList()
+            }
+
+            // Transliterate
+            val transliterated = transliterationEngine.transliterate(currentWord)
+
+            if (transliterated.isEmpty() || transliterated == currentWord) {
+                return emptyList()
+            }
+
+            // Return as suggestion
+            listOf(
+                Suggestion(
+                    word = transliterated,
+                    confidence = Constants.Transliteration.TRANSLITERATION_CONFIDENCE,
+                    source = SuggestionSource.TRANSLITERATION,
+                    frequency = 0
+                )
+            )
+        } catch (e: Exception) {
+            println("Error getting transliteration suggestions: ${e.message}")
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get typo correction suggestions (NEW!)
+     *
+     * Finds and suggests corrections for misspelled words.
+     *
+     * @param currentWord The word being typed
+     * @param language Current language
+     * @return List of typo correction suggestions
+     */
+    private fun getTypoCorrections(currentWord: String, language: String): List<Suggestion> {
+        return try {
+            // Only check for typos if word is long enough
+            if (currentWord.length < Constants.TypoCorrection.MIN_WORD_LENGTH_FOR_CORRECTION) {
+                return emptyList()
+            }
+
+            // Find corrections
+            val corrections = typoCorrector.findCorrections(currentWord, language)
+
+            // Convert to suggestions
+            corrections.map { correction ->
+                Suggestion(
+                    word = correction.correction,
+                    confidence = correction.confidence,
+                    source = SuggestionSource.CORRECTION,
+                    frequency = 0
+                )
+            }
+        } catch (e: Exception) {
+            println("Error getting typo corrections: ${e.message}")
             e.printStackTrace()
             emptyList()
         }
