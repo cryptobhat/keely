@@ -195,6 +195,7 @@ object Constants {
         const val NEXT_WORD_MODEL = "ml_models/kannada_next_word_v1.tflite"
         const val AUTOCOMPLETE_MODEL = "ml_models/kannada_autocomplete_v1.tflite"
         const val MODEL_METADATA_FILE = "ml_models/model_metadata.json"
+        const val VOCABULARY_FILE = "ml_models/vocabulary.json"
 
         // Inference settings
         const val MAX_CONTEXT_WORDS = 3              // Use last 3 words for context
@@ -204,6 +205,7 @@ object Constants {
 
         // Model configuration
         const val USE_GPU_ACCELERATION = true        // Use GPU if available
+        const val USE_NNAPI = true                   // Use Android Neural Networks API
         const val NUM_THREADS = 4                    // Number of CPU threads for inference
         const val ALLOW_FP16 = true                  // Allow 16-bit floating point
 

@@ -82,34 +82,35 @@ class DictionaryLoader(private val context: Context) {
 
             context.assets.open(filePath).use { inputStream ->
                 BufferedReader(InputStreamReader(inputStream, Constants.Dictionary.ENCODING)).use { reader ->
-                    reader.forEachLine { line ->
+                    var line: String? = reader.readLine()
+                    while (line != null) {
                         lineNumber++
 
                         // Skip empty lines
-                        if (line.isBlank()) return@forEachLine
+                        if (line.isNotBlank()) {
+                            // Skip comments
+                            if (!line.trimStart().startsWith(Constants.Dictionary.COMMENT_PREFIX)) {
+                                // Parse line: "word frequency"
+                                val parts = line.trim().split(Constants.Dictionary.WORD_FREQUENCY_SEPARATOR, limit = 2)
 
-                        // Skip comments
-                        if (line.trimStart().startsWith(Constants.Dictionary.COMMENT_PREFIX)) {
-                            return@forEachLine
-                        }
+                                if (parts.isNotEmpty()) {
+                                    val word = parts[0].trim()
+                                    val frequency = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 1
 
-                        // Parse line: "word frequency"
-                        val parts = line.trim().split(Constants.Dictionary.WORD_FREQUENCY_SEPARATOR, limit = 2)
+                                    // Validate word is not empty and frequency is positive
+                                    if (word.isNotEmpty() && frequency >= Constants.Dictionary.MIN_WORD_FREQUENCY) {
+                                        words.add(word to frequency)
 
-                        if (parts.isNotEmpty()) {
-                            val word = parts[0].trim()
-                            val frequency = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 1
-
-                            // Validate word is not empty and frequency is positive
-                            if (word.isNotEmpty() && frequency >= Constants.Dictionary.MIN_WORD_FREQUENCY) {
-                                words.add(word to frequency)
-
-                                // Stop if we've reached max dictionary size
-                                if (words.size >= Constants.Dictionary.MAX_DICTIONARY_SIZE) {
-                                    return@use  // Exit reader.use
+                                        // Stop if we've reached max dictionary size
+                                        if (words.size >= Constants.Dictionary.MAX_DICTIONARY_SIZE) {
+                                            break  // Exit while loop
+                                        }
+                                    }
                                 }
                             }
                         }
+
+                        line = reader.readLine()
                     }
                 }
             }

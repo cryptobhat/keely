@@ -4,6 +4,8 @@ import android.content.Context
 import com.kannada.kavi.core.common.Constants
 import com.kannada.kavi.core.common.Result
 import com.kannada.kavi.features.suggestion.dictionary.DictionaryLoader
+import com.kannada.kavi.features.suggestion.ml.ContextManager
+import com.kannada.kavi.features.suggestion.ml.MLPredictor
 import com.kannada.kavi.features.suggestion.models.Suggestion
 import com.kannada.kavi.features.suggestion.models.SuggestionSource
 import kotlinx.coroutines.CoroutineScope
@@ -79,6 +81,12 @@ class SuggestionEngine(private val context: Context) {
     // User's personal word history (learned over time)
     private val userHistoryTrie = Trie()
 
+    // ML-based prediction (NEW!)
+    private val mlPredictor = MLPredictor(context)
+
+    // Context manager for tracking typing history (NEW!)
+    private val contextManager = ContextManager()
+
     // Coroutine scope for async operations
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -96,7 +104,7 @@ class SuggestionEngine(private val context: Context) {
     /**
      * Initialize the engine
      *
-     * Loads dictionaries in background.
+     * Loads dictionaries and ML model in background.
      * Call this in InputMethodService.onCreate()
      */
     fun initialize() {
@@ -110,6 +118,20 @@ class SuggestionEngine(private val context: Context) {
 
                 // Load user's personal history
                 loadUserHistory()
+
+                // Initialize ML predictor (NEW!)
+                // Note: This may fail if model file not found - that's OK!
+                // Keyboard will still work with dictionary-based suggestions
+                val mlResult = mlPredictor.initialize()
+                when (mlResult) {
+                    is Result.Success -> {
+                        println("ML predictor initialized successfully")
+                    }
+                    is Result.Error -> {
+                        println("ML predictor failed to initialize: ${mlResult.exception.message}")
+                        println("Continuing without ML predictions (dictionary-based suggestions still work)")
+                    }
+                }
 
                 _isReady.value = true
             } catch (e: Exception) {
@@ -153,9 +175,12 @@ class SuggestionEngine(private val context: Context) {
         val dictionarySuggestions = getDictionarySuggestions(currentWord, language)
         suggestions.addAll(dictionarySuggestions)
 
-        // 3. TODO: Get predictions based on previous word (ML-based)
-        // val predictions = getNextWordPredictions(previousWord, language)
-        // suggestions.addAll(predictions)
+        // 3. Get ML-based predictions (NEW!)
+        // Only if we have enough context and ML is ready
+        if (mlPredictor.isReady() && !contextManager.isEmpty()) {
+            val mlSuggestions = getMLPredictions(currentWord, language)
+            suggestions.addAll(mlSuggestions)
+        }
 
         // 4. TODO: Get typo corrections
         // val corrections = getTypoCorrections(currentWord, language)
@@ -213,6 +238,9 @@ class SuggestionEngine(private val context: Context) {
         scope.launch {
             userHistoryTrie.incrementFrequency(word, increment = 1)
 
+            // Track word for ML context (NEW!)
+            contextManager.trackTypingContext(word)
+
             // TODO: Save to database
             // userHistoryRepository.recordWord(word)
         }
@@ -256,6 +284,10 @@ class SuggestionEngine(private val context: Context) {
      * Call this in InputMethodService.onDestroy()
      */
     fun release() {
+        // Release ML resources (NEW!)
+        mlPredictor.release()
+        contextManager.reset()
+
         // Coroutines will be cancelled when scope is cancelled
         // Tries will be garbage collected
     }
@@ -399,6 +431,64 @@ class SuggestionEngine(private val context: Context) {
             */
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * Get ML-based predictions (NEW!)
+     *
+     * Uses the neural network to predict next words based on typing context.
+     *
+     * @param currentWord The word being typed (for filtering)
+     * @param language Current language
+     * @return List of ML predictions as Suggestions
+     */
+    private suspend fun getMLPredictions(currentWord: String, language: String): List<Suggestion> {
+        return try {
+            // Get typing context (last N words)
+            val context = contextManager.getContext(Constants.ML.MAX_CONTEXT_WORDS)
+
+            // If not enough context, skip ML predictions
+            if (context.isEmpty()) {
+                return emptyList()
+            }
+
+            // Run ML prediction
+            val mlResult = mlPredictor.predict(context)
+
+            when (mlResult) {
+                is Result.Success -> {
+                    val predictions = mlResult.data
+
+                    // Convert predictions to suggestions
+                    predictions
+                        .filter { prediction ->
+                            // Optional: Filter predictions that start with current word
+                            // (if user is already typing)
+                            if (currentWord.isEmpty()) {
+                                true
+                            } else {
+                                prediction.word.startsWith(currentWord, ignoreCase = true)
+                            }
+                        }
+                        .map { prediction ->
+                            Suggestion(
+                                word = prediction.word,
+                                confidence = prediction.confidence,
+                                source = SuggestionSource.PREDICTION,
+                                frequency = 0
+                            )
+                        }
+                }
+                is Result.Error -> {
+                    println("ML prediction failed: ${mlResult.exception.message}")
+                    emptyList()
+                }
+            }
+        } catch (e: Exception) {
+            println("Error getting ML predictions: ${e.message}")
+            e.printStackTrace()
+            emptyList()
         }
     }
 }

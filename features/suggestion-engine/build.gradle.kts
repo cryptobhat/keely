@@ -52,7 +52,8 @@ dependencies {
     // Machine Learning - TensorFlow Lite
     implementation(libs.tensorflow.lite)
     implementation(libs.tensorflow.lite.support)
-    implementation(libs.tensorflow.lite.gpu)  // Optional: GPU acceleration
+    // Note: GPU delegate will be added when .tflite model is ready
+    // implementation(libs.tensorflow.lite.gpu)
 
     // JSON parsing (for loading dictionaries and rules)
     implementation(libs.gson)
