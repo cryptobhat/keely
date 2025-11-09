@@ -216,12 +216,12 @@ object DeshDesignSystem {
                     ScreenSize.XLARGE -> 0.38f  // 38% of screen height
                 }
             }
-            else -> {  // Portrait - Very compact like Desh
+            else -> {  // Portrait - Compact but with room for padding
                 when (screenSize) {
-                    ScreenSize.SMALL -> 0.32f   // 32% of screen height
-                    ScreenSize.NORMAL -> 0.28f  // 28% of screen height (matching Desh exactly)
-                    ScreenSize.LARGE -> 0.27f   // 27% of screen height
-                    ScreenSize.XLARGE -> 0.25f  // 25% of screen height
+                    ScreenSize.SMALL -> 0.36f   // 36% of screen height
+                    ScreenSize.NORMAL -> 0.34f  // 34% of screen height (room for 20dp bottom padding)
+                    ScreenSize.LARGE -> 0.32f   // 32% of screen height
+                    ScreenSize.XLARGE -> 0.30f  // 30% of screen height
                 }
             }
         }
