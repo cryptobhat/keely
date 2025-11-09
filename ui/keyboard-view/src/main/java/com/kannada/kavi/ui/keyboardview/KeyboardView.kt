@@ -86,9 +86,24 @@ class KeyboardView @JvmOverloads constructor(
 
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
+        // Gboard uses slightly bolder text for better readability
+        typeface = android.graphics.Typeface.create(
+            android.graphics.Typeface.DEFAULT,
+            android.graphics.Typeface.NORMAL
+        )
     }
 
     private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+
+    // Gboard-inspired visual enhancements
+    private val keyShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        maskFilter = android.graphics.BlurMaskFilter(4f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+    }
+
+    private val keyHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
@@ -111,14 +126,23 @@ class KeyboardView @JvmOverloads constructor(
     private var keyboardWidth = 0f
     private var keyboardHeight = 0f
 
-    // Spacing between keys (from theme)
-    private var keyHorizontalSpacing = 4f
-    private var keyVerticalSpacing = 6f
-    private var rowPadding = 6f
+    // Spacing between keys (Gboard-inspired: more generous spacing)
+    private var keyHorizontalSpacing = 6f  // Increased from 4f
+    private var keyVerticalSpacing = 8f   // Increased from 6f
+    private var rowPadding = 8f           // Increased from 6f
 
     init {
         // Apply default theme
         applyTheme(theme)
+
+        // Gboard-style padding for better edge alignment
+        val density = resources.displayMetrics.density
+        setPadding(
+            (4 * density).toInt(), // left
+            (6 * density).toInt(), // top
+            (4 * density).toInt(), // right
+            (6 * density).toInt()  // bottom
+        )
     }
 
     /**
@@ -166,11 +190,28 @@ class KeyboardView @JvmOverloads constructor(
 
         ripplePaint.color = theme.colors.ripple
 
-        // Apply spacing
+        // Configure shadow paint (Gboard-style subtle elevation)
+        keyShadowPaint.color = if (theme.mode == com.kannada.kavi.features.themes.ThemeMode.DARK) {
+            0x40000000.toInt() // Darker shadow for dark mode
+        } else {
+            0x20000000.toInt() // Subtle shadow for light mode
+        }
+
+        // Configure highlight paint (top shine effect)
+        keyHighlightPaint.color = if (theme.mode == com.kannada.kavi.features.themes.ThemeMode.DARK) {
+            0x10FFFFFF.toInt() // Subtle white highlight for dark mode
+        } else {
+            0x20FFFFFF.toInt() // Subtle white highlight for light mode
+        }
+
+        // Apply spacing (Gboard uses slightly more generous spacing)
         val density = resources.displayMetrics.density
         keyHorizontalSpacing = theme.spacing.keyHorizontalSpacing * density
         keyVerticalSpacing = theme.spacing.keyVerticalSpacing * density
         rowPadding = theme.spacing.rowPadding * density
+
+        // Enable hardware acceleration for shadows
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
     /**
@@ -248,15 +289,22 @@ class KeyboardView @JvmOverloads constructor(
      *
      * Android asks: "How big do you want to be?"
      * We answer: "This big!"
+     *
+     * Gboard-inspired proportions:
+     * - Taller keys (60dp vs 56dp) for better accuracy
+     * - Includes spacing between rows
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val desiredWidth = MeasureSpec.getSize(widthMeasureSpec)
 
         // Calculate desired height based on number of rows
-        // Each row gets 56dp (standard key height)
+        // Gboard uses ~60dp per row for better touch targets
         val rowCount = rows.size.coerceAtLeast(4) // At least 4 rows
         val density = resources.displayMetrics.density
-        val desiredHeight = (rowCount * 56 * density).toInt() + paddingTop + paddingBottom
+        val keyHeightDp = 60f // Increased from 56dp (Gboard-style)
+        val verticalSpacingTotal = (rowCount - 1) * keyVerticalSpacing
+        val desiredHeight = ((rowCount * keyHeightDp * density) + verticalSpacingTotal).toInt() +
+                           paddingTop + paddingBottom
 
         setMeasuredDimension(desiredWidth, desiredHeight)
     }
@@ -307,11 +355,13 @@ class KeyboardView @JvmOverloads constructor(
      * @param canvas The canvas to draw on
      * @param keyBound The key and its bounds
      *
-     * Material You enhancements:
+     * Material You + Gboard-inspired enhancements:
      * - Theme-based corner radius (8dp)
      * - Theme colors for different states
      * - Selected state support
      * - Optional borders
+     * - Subtle shadow for elevation (Gboard-style)
+     * - Highlight on top edge for depth
      */
     private fun drawKey(canvas: Canvas, keyBound: KeyBound) {
         val key = keyBound.key
@@ -327,8 +377,34 @@ class KeyboardView @JvmOverloads constructor(
         // Get corner radius from theme (convert dp to pixels)
         val cornerRadius = theme.shape.keyCornerRadius * resources.displayMetrics.density
 
+        // Gboard-style elevation: Draw subtle shadow beneath key
+        if (key != pressedKey) { // No shadow when pressed (looks flatter)
+            val shadowOffset = 2f * resources.displayMetrics.density
+            val shadowBounds = RectF(
+                bounds.left,
+                bounds.top + shadowOffset,
+                bounds.right,
+                bounds.bottom + shadowOffset
+            )
+            canvas.drawRoundRect(shadowBounds, cornerRadius, cornerRadius, keyShadowPaint)
+        }
+
         // Draw key background (rounded rectangle)
         canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, backgroundPaint)
+
+        // Gboard-style highlight: Subtle shine on top portion of key
+        if (key != pressedKey) { // No highlight when pressed
+            val highlightBounds = RectF(
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.top + (bounds.height() * 0.3f) // Top 30% of key
+            )
+            canvas.save()
+            canvas.clipRect(bounds) // Clip to key bounds
+            canvas.drawRoundRect(highlightBounds, cornerRadius, cornerRadius, keyHighlightPaint)
+            canvas.restore()
+        }
 
         // Draw key border (if enabled in theme)
         if (theme.shape.borderEnabled) {
@@ -349,11 +425,18 @@ class KeyboardView @JvmOverloads constructor(
             val textX = bounds.centerX()
             val textY = bounds.centerY() - ((labelPaint.descent() + labelPaint.ascent()) / 2)
 
-            // Adjust text size based on key size
-            val optimalTextSize = (bounds.height() * 0.4f).coerceAtMost(
+            // Gboard-style text sizing: proportional to key height, slightly larger
+            val optimalTextSize = (bounds.height() * 0.42f).coerceAtMost(
                 theme.typography.buttonSize * resources.displayMetrics.scaledDensity
             )
             labelPaint.textSize = optimalTextSize
+
+            // Set text color based on key state
+            labelPaint.color = when {
+                key == pressedKey -> theme.colors.onSurface
+                key == selectedKey -> theme.colors.primary
+                else -> theme.colors.onSurface
+            }
 
             canvas.drawText(key.label, textX, textY, labelPaint)
         }
