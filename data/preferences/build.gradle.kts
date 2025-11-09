@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -49,6 +51,8 @@ dependencies {
     // Module-specific dependencies
     implementation(project(":core:common"))
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
 
     // Testing
     testImplementation(libs.junit)

@@ -233,6 +233,9 @@ class KeyboardView @JvmOverloads constructor(
      * This is like creating a blueprint before building.
      * We figure out where each key should be drawn.
      * Now uses theme spacing values for Material You design.
+     *
+     * IMPORTANT: Keys must align in a proper grid across all rows
+     * Similar to Gboard and the reference design
      */
     private fun calculateKeyBounds() {
         keyBounds.clear()
@@ -243,37 +246,61 @@ class KeyboardView @JvmOverloads constructor(
         val availableWidth = width - (paddingLeft + paddingRight)
         val availableHeight = height - (paddingTop + paddingBottom)
 
+        // Standard keyboard layout uses 10 unit width as reference
+        // Row 1: 10 keys x 1.0 width = 10 units
+        // Row 2: 9 keys x 1.0 width = 9 units (centered)
+        // Row 3: 1.5 + 7x1.0 + 1.5 = 10 units
+        // Row 4: 1.5 + 1.0 + 1.0 + 4.0 + 1.0 + 1.5 = 10 units
+        val standardRowWidth = 10f
+
+        // Calculate base unit width (width of a standard 1.0 width key)
+        // This ensures consistent key sizes across all rows
+        val totalSpacingWidth = (9 * keyHorizontalSpacing) // Assuming 10 keys with 9 spaces between them
+        val baseUnitWidth = (availableWidth - totalSpacingWidth) / standardRowWidth
+
+        // Calculate row height
         keyHeight = (availableHeight - (rows.size - 1) * keyVerticalSpacing) / rows.size
 
         var currentY = paddingTop.toFloat()
 
-        rows.forEach { row ->
-            // Calculate total width units for this row
-            val totalWidth = row.totalWidth
-
-            // Calculate actual key width
-            val unitWidth = (availableWidth - (row.keyCount - 1) * keyHorizontalSpacing) / totalWidth
-
-            var currentX = paddingLeft.toFloat()
-
+        rows.forEachIndexed { rowIndex, row ->
+            // Calculate the actual width this row will occupy
+            var rowActualWidth = 0f
             row.keys.forEach { key ->
+                rowActualWidth += baseUnitWidth * key.width
+            }
+            // Add spacing between keys (not after the last key)
+            if (row.keyCount > 0) {
+                rowActualWidth += (row.keyCount - 1) * keyHorizontalSpacing
+            }
+
+            // Center the row horizontally
+            val rowStartX = paddingLeft + (availableWidth - rowActualWidth) / 2f
+
+            var currentX = rowStartX
+
+            row.keys.forEachIndexed { keyIndex, key ->
                 // Calculate key width based on its width multiplier
-                val keyWidth = (unitWidth * key.width) + ((key.width - 1) * keyHorizontalSpacing)
+                val keyActualWidth = baseUnitWidth * key.width
 
                 // Create bounds for this key
                 val bounds = RectF(
                     currentX,
                     currentY,
-                    currentX + keyWidth - keyHorizontalSpacing,
-                    currentY + keyHeight - keyVerticalSpacing
+                    currentX + keyActualWidth,
+                    currentY + keyHeight
                 )
 
                 keyBounds.add(KeyBound(key, bounds))
 
-                currentX += keyWidth
+                // Move to next key position (add spacing only if not the last key)
+                currentX += keyActualWidth
+                if (keyIndex < row.keyCount - 1) {
+                    currentX += keyHorizontalSpacing
+                }
             }
 
-            currentY += keyHeight
+            currentY += keyHeight + keyVerticalSpacing
         }
     }
 
@@ -361,6 +388,16 @@ class KeyboardView @JvmOverloads constructor(
         val key = keyBound.key
         val bounds = keyBound.bounds
 
+        // Create inset bounds to account for spacing (visual gap between keys)
+        // This ensures keys don't touch each other visually
+        val insetAmount = 1f * resources.displayMetrics.density // 1dp gap on each side
+        val drawBounds = RectF(
+            bounds.left + insetAmount,
+            bounds.top + insetAmount,
+            bounds.right - insetAmount,
+            bounds.bottom - insetAmount
+        )
+
         // Choose paint based on key state
         val backgroundPaint = when {
             key == pressedKey -> keyPressedPaint
@@ -375,16 +412,16 @@ class KeyboardView @JvmOverloads constructor(
         if (key != pressedKey) { // No shadow when pressed (looks flatter)
             val shadowOffset = 1f * resources.displayMetrics.density // 1px offset per design system
             val shadowBounds = RectF(
-                bounds.left,
-                bounds.top + shadowOffset,
-                bounds.right,
-                bounds.bottom + shadowOffset
+                drawBounds.left,
+                drawBounds.top + shadowOffset,
+                drawBounds.right,
+                drawBounds.bottom + shadowOffset
             )
             canvas.drawRoundRect(shadowBounds, cornerRadius, cornerRadius, keyShadowPaint)
         }
 
         // Draw key background (rounded rectangle)
-        canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, backgroundPaint)
+        canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, backgroundPaint)
 
         // Draw key border (if enabled in theme)
         if (theme.shape.borderEnabled) {
@@ -393,17 +430,17 @@ class KeyboardView @JvmOverloads constructor(
                 val selectedBorderPaint = Paint(keyBorderPaint).apply {
                     color = theme.colors.keySelectedBorder
                 }
-                canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, selectedBorderPaint)
+                canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, selectedBorderPaint)
             } else {
-                canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, keyBorderPaint)
+                canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, keyBorderPaint)
             }
         }
 
         // Draw key label (text)
         if (key.label.isNotEmpty()) {
-            // Calculate text position (center of key)
-            val textX = bounds.centerX()
-            val textY = bounds.centerY() - ((labelPaint.descent() + labelPaint.ascent()) / 2)
+            // Calculate text position (center of key using drawBounds for accurate centering)
+            val textX = drawBounds.centerX()
+            val textY = drawBounds.centerY() - ((labelPaint.descent() + labelPaint.ascent()) / 2)
 
             // Desh design system: 18px text size for keys
             val optimalTextSize = (bounds.height() * 0.43f).coerceAtMost(

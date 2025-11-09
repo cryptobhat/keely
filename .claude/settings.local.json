@@ -12,7 +12,10 @@
       "Bash(git checkout:*)",
       "Bash(./gradlew.bat:*)",
       "Bash(git log:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(./gradlew :ui:keyboard-view:assembleDebug:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

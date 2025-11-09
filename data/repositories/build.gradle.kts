@@ -52,7 +52,9 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":data:database"))
     implementation(project(":data:preferences"))
+    implementation(project(":features:themes"))
     implementation(libs.hilt.android)
+    implementation(libs.gson)
     ksp(libs.hilt.android.compiler)
 
     // Testing
