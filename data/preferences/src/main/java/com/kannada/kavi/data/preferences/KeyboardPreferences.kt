@@ -104,6 +104,53 @@ class KeyboardPreferences(context: Context) {
 
     fun isVoiceInputEnabled(): Boolean = prefs.getBoolean(KEY_VOICE, true)
 
+    // Gesture controls
+    fun setGesturesEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_GESTURES, enabled).apply()
+    }
+
+    fun isGesturesEnabled(): Boolean = prefs.getBoolean(KEY_GESTURES, true)
+
+    fun setSwipeToDeleteEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SWIPE_DELETE, enabled).apply()
+    }
+
+    fun isSwipeToDeleteEnabled(): Boolean = prefs.getBoolean(KEY_SWIPE_DELETE, true)
+
+    fun setSwipeCursorMoveEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SWIPE_CURSOR, enabled).apply()
+    }
+
+    fun isSwipeCursorMoveEnabled(): Boolean = prefs.getBoolean(KEY_SWIPE_CURSOR, true)
+
+    // Clipboard features
+    fun setClipboardHistoryEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CLIPBOARD_HISTORY, enabled).apply()
+    }
+
+    fun isClipboardHistoryEnabled(): Boolean = prefs.getBoolean(KEY_CLIPBOARD_HISTORY, true)
+
+    fun setClipboardSyncEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CLIPBOARD_SYNC, enabled).apply()
+    }
+
+    fun isClipboardSyncEnabled(): Boolean = prefs.getBoolean(KEY_CLIPBOARD_SYNC, false)
+
+    // Swipe typing sensitivity (0.0-1.0, default 0.5)
+    fun setSwipeTypingSensitivity(sensitivity: Float) {
+        val clampedSensitivity = sensitivity.coerceIn(0f, 1f)
+        prefs.edit().putFloat(KEY_SWIPE_SENSITIVITY, clampedSensitivity).apply()
+    }
+
+    fun getSwipeTypingSensitivity(): Float = prefs.getFloat(KEY_SWIPE_SENSITIVITY, 0.5f)
+
+    // Swipe path visibility
+    fun setSwipePathVisible(visible: Boolean) {
+        prefs.edit().putBoolean(KEY_SWIPE_PATH_VISIBLE, visible).apply()
+    }
+
+    fun isSwipePathVisible(): Boolean = prefs.getBoolean(KEY_SWIPE_PATH_VISIBLE, true)
+
     // Keyboard height adjustment (percentage: 70-130, default 100)
     fun setKeyboardHeightPercentage(percentage: Int) {
         // Clamp to valid range
@@ -193,6 +240,19 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_PREDICTIVE = "predictive_text"
         private const val KEY_SWIPE = "swipe_typing"
         private const val KEY_VOICE = "voice_input"
+
+        // Gesture control keys
+        private const val KEY_GESTURES = "gestures_enabled"
+        private const val KEY_SWIPE_DELETE = "swipe_to_delete"
+        private const val KEY_SWIPE_CURSOR = "swipe_cursor_move"
+
+        // Clipboard feature keys
+        private const val KEY_CLIPBOARD_HISTORY = "clipboard_history"
+        private const val KEY_CLIPBOARD_SYNC = "clipboard_sync"
+
+        // Swipe typing settings
+        private const val KEY_SWIPE_SENSITIVITY = "swipe_sensitivity"
+        private const val KEY_SWIPE_PATH_VISIBLE = "swipe_path_visible"
 
         // Keyboard appearance keys
         private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percentage"
