@@ -1,5 +1,6 @@
 package com.kannada.kavi.core.ime
 
+import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -15,7 +16,8 @@ import com.kannada.kavi.features.suggestion.SuggestionEngine
 import com.kannada.kavi.features.clipboard.ClipboardManager
 import com.kannada.kavi.ui.keyboardview.KeyboardView
 import com.kannada.kavi.ui.keyboardview.SuggestionStripView
-import com.kannada.kavi.ui.keyboardview.ClipboardPopupView
+import com.kannada.kavi.ui.keyboardview.SuggestionStripView.IconType
+import com.kannada.kavi.ui.keyboardview.ClipboardStripView
 import com.kannada.kavi.ui.popupviews.EmojiBoardView
 // Design system removed
 import android.widget.PopupWindow
@@ -94,7 +96,15 @@ class KaviInputMethodService : InputMethodService() {
     // Preference change listener for dynamic updates
     private val preferenceChangeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
-            "keyboard_height" -> {
+            "dark_mode" -> {
+                // Update dark mode setting
+                preferences.isDarkModeEnabled()?.let { isDarkMode ->
+                    if (::dynamicThemeManager.isInitialized) {
+                        dynamicThemeManager.setDarkMode(isDarkMode)
+                    }
+                }
+            }
+            PREF_KEY_KEYBOARD_HEIGHT -> {
                 // Update keyboard height dynamically
                 val newHeight = preferences.getKeyboardHeightPercentage()
                 keyboardView?.setKeyboardHeightPercentage(newHeight)
@@ -149,11 +159,14 @@ class KaviInputMethodService : InputMethodService() {
     // The keyboard view that will be displayed
     private var keyboardView: KeyboardView? = null
 
+    private var keyboardRootContainer: LinearLayout? = null
+
     // The suggestion strip view above the keyboard
     private var suggestionStripView: SuggestionStripView? = null
 
-    // Clipboard popup window
-    private var clipboardPopup: PopupWindow? = null
+    // Clipboard strip view
+    private var clipboardStripView: ClipboardStripView? = null
+    private var isClipboardStripVisible = false
 
     // Emoji board view
     private var emojiBoardView: EmojiBoardView? = null
@@ -261,8 +274,8 @@ class KaviInputMethodService : InputMethodService() {
         // Register preference change listener for dynamic updates
         preferences.registerChangeListener(preferenceChangeListener)
 
-        // Initialize the layout manager
-        layoutManager = LayoutManager(this)
+        // Initialize the layout manager with preferences
+        layoutManager = LayoutManager(this, preferences)
 
         // Initialize input connection handler
         inputConnectionHandler = InputConnectionHandler()
@@ -289,7 +302,10 @@ class KaviInputMethodService : InputMethodService() {
         suggestionEngine.initialize()
 
         // Initialize clipboard manager
-        clipboardManager = ClipboardManager(this)
+        clipboardManager = ClipboardManager(this).apply {
+            initialize()
+            startSystemListener()
+        }
 
         // Initialize analytics manager
         analyticsManager = AnalyticsManager.getInstance(this)
@@ -303,6 +319,11 @@ class KaviInputMethodService : InputMethodService() {
         // Load dynamic color setting from preferences
         val isDynamicEnabled = preferences.isDynamicThemeEnabled()
         dynamicThemeManager.setDynamicColorEnabled(isDynamicEnabled)
+        
+        // Load dark mode setting from preferences (if set, otherwise use system default)
+        preferences.isDarkModeEnabled()?.let { isDarkMode ->
+            dynamicThemeManager.setDarkMode(isDarkMode)
+        }
         
         // Force initial color scheme update
         serviceScope.launch(Dispatchers.Main) {
@@ -323,12 +344,15 @@ class KaviInputMethodService : InputMethodService() {
                 dynamicThemeManager.keyboardColorScheme.collect { colorScheme ->
                     colorScheme?.let {
                         // Update design system with new colors
-                        KeyboardDesignSystem.setDynamicColorScheme(it)
-                        // Refresh keyboard view colors (if view exists)
-                        keyboardView?.refreshColors()
-                        // Refresh emoji board colors
-                        emojiBoardView?.refreshColors()
-                    }
+                          KeyboardDesignSystem.setDynamicColorScheme(it)
+                          // Refresh keyboard view colors (if view exists)
+                          keyboardView?.refreshColors()
+                          suggestionStripView?.refreshColors()
+                          clipboardStripView?.refreshColors()
+                          keyboardRootContainer?.setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
+                          // Refresh emoji board colors
+                          emojiBoardView?.refreshColors()
+                      }
                 }
             } catch (e: Exception) {
                 // If theme updates fail, just continue with static colors
@@ -364,6 +388,19 @@ class KaviInputMethodService : InputMethodService() {
     }
 
     /**
+     * onConfigurationChanged - Handle system configuration changes
+     * This includes dark mode changes, display size changes, etc.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        // Update dynamic theme manager with new configuration
+        if (::dynamicThemeManager.isInitialized) {
+            dynamicThemeManager.updateDarkMode()
+        }
+    }
+
+    /**
      * onCreateInputView - Create the keyboard UI
      *
      * Android calls this to ask: "What should the keyboard look like?"
@@ -378,18 +415,23 @@ class KaviInputMethodService : InputMethodService() {
         // Create container to hold suggestion strip + keyboard
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFFF5F5F5.toInt())  // Light gray background
+            setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
             val density = resources.displayMetrics.density
             setPadding(0, 0, 0, (8 * density).toInt()) // 8dp bottom padding like Gboard
         }
+        keyboardRootContainer = container
 
         // Create suggestion strip with top margin for gap
         val stripView = SuggestionStripView(this).apply {
             setOnSuggestionClickListener { suggestion ->
                 onSuggestionClicked(suggestion)
             }
+            setOnIconClickListener { iconType ->
+                onIconClicked(iconType)
+            }
         }
         suggestionStripView = stripView
+        stripView.refreshColors()
         
         // Add margin layout params to create gap before suggestion bar
         val stripLayoutParams = LinearLayout.LayoutParams(
@@ -419,6 +461,36 @@ class KaviInputMethodService : InputMethodService() {
         }
         container.addView(separatorView)
 
+        // Create clipboard strip view (initially hidden)
+        val clipboardStrip = ClipboardStripView(this).apply {
+            visibility = View.GONE
+            setOnItemClickListener { item ->
+                // Paste the clipboard item
+                val text = clipboardManager.pasteItem(item.id)
+                if (text != null) {
+                    finalizePhoneticBuffer()
+                    resetPhoneticState()
+                    currentInputConnection?.commitText(text, 1)
+                }
+                hideClipboardStrip()
+            }
+            setOnItemLongClickListener { item ->
+                // Show options for pin/delete
+                // TODO: Implement options dialog
+                clipboardManager.setPinned(item.id, !item.isPinned)
+                setItems(clipboardManager.items.value)
+            }
+            setOnCloseListener {
+                hideClipboardStrip()
+            }
+        }
+        clipboardStripView = clipboardStrip
+        val clipboardStripLayoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        container.addView(clipboardStrip, clipboardStripLayoutParams)
+
         // Create emoji board view (initially hidden)
         val emojiBoard = EmojiBoardView(this).apply {
             visibility = View.GONE
@@ -434,11 +506,14 @@ class KaviInputMethodService : InputMethodService() {
         container.addView(emojiBoard, emojiLayoutParams)
 
         // Create keyboard view
-        val view = KeyboardView(this).apply {
-            setOnKeyPressListener { key ->
-                handleKeyPress(key)
-            }
-            setBackgroundColor(0xFFF5F5F5.toInt())  // Light gray background
+          val view = KeyboardView(this).apply {
+              setOnKeyPressListener { key ->
+                  handleKeyPress(key)
+              }
+              setOnCommaEmojiLongPressListener {
+                  showEmojiBoard()
+              }
+              setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)  // Match dynamic theme
 
             // Apply keyboard height adjustment from preferences
             val heightPercentage = preferences.getKeyboardHeightPercentage()
@@ -447,15 +522,80 @@ class KaviInputMethodService : InputMethodService() {
             // Configure swipe typing and gestures
             val swipeEnabled = preferences.isSwipeTypingEnabled()
             val gesturesEnabled = preferences.isGesturesEnabled()
+            val swipeSensitivity = preferences.getSwipeTypingSensitivity()
+            val swipeDeleteEnabled = preferences.isSwipeToDeleteEnabled()
+            val swipeCursorEnabled = preferences.isSwipeCursorMoveEnabled()
+
             setSwipeTypingEnabled(swipeEnabled)
             setGesturesEnabled(gesturesEnabled)
+            setSwipeSensitivity(swipeSensitivity)
+            setSwipeToDeleteEnabled(swipeDeleteEnabled)
+            setSwipeCursorEnabled(swipeCursorEnabled)
 
             // Set callback for swipe words
-            setOnSwipeWordListener { word ->
-                // Insert the swiped word
-                currentInputConnection?.commitText(word, 1)
-                // Add space after word
-                currentInputConnection?.commitText(" ", 1)
+            setOnSwipeWordListener { rawWord ->
+                // Use SuggestionEngine to find the best matching word from dictionary
+                // This ensures we get the actual word user intended, not just raw key sequence
+                serviceScope.launch(Dispatchers.Main) {
+                    val currentLayout = layoutManager.activeLayout.value
+                    val language = if (currentLayout?.id == Constants.Layouts.LAYOUT_QWERTY) "en" else "kn"
+                    
+                    // Get suggestions for the raw swipe word
+                    // Try multiple approaches: exact match, prefix match, and fuzzy match
+                    val suggestions = suggestionEngine.getSuggestions(
+                        currentWord = rawWord,
+                        language = language
+                    )
+                    
+                    // Find the best matching word
+                    val bestWord = when {
+                        // If we have suggestions, use the top one (highest confidence)
+                        suggestions.isNotEmpty() -> {
+                            val topSuggestion = suggestions.first()
+                            // Prefer suggestions that start with the same letter as raw word
+                            if (topSuggestion.word.isNotEmpty() && 
+                                rawWord.isNotEmpty() && 
+                                topSuggestion.word.first().equals(rawWord.first(), ignoreCase = true)) {
+                                topSuggestion.word
+                            } else {
+                                // Still use top suggestion even if first letter differs (fuzzy match)
+                                topSuggestion.word
+                            }
+                        }
+                        // Try prefix matching - check if raw word starts with any dictionary word
+                        rawWord.length >= 3 -> {
+                            // Try shorter prefixes to find matches
+                            val prefixSuggestions = suggestionEngine.getSuggestions(
+                                currentWord = rawWord.take(rawWord.length - 1),
+                                language = language
+                            )
+                            prefixSuggestions.firstOrNull()?.word ?: rawWord
+                        }
+                        // Fall back to raw word if too short or no matches
+                        else -> rawWord
+                    }
+                    
+                    android.util.Log.d("KaviIME", "Swipe word: raw='$rawWord', best='$bestWord', suggestions=${suggestions.take(5).map { "${it.word}(${it.confidence})" }}")
+                    
+                    // Insert the best matching word
+                    currentInputConnection?.commitText(bestWord, 1)
+                    // Add space after word
+                    currentInputConnection?.commitText(" ", 1)
+                    
+                    // Learn from the typed word
+                    suggestionEngine.onWordTyped(bestWord)
+                }
+            }
+
+            // Add swipe gesture listener for cursor and selection
+            setOnSwipeGestureListener { gestureType, distance ->
+                when (gestureType) {
+                    "cursor_left" -> moveCursor(-distance)
+                    "cursor_right" -> moveCursor(distance)
+                    "select_left" -> selectText(-distance)
+                    "select_right" -> selectText(distance)
+                    "delete_word" -> deleteWord()
+                }
             }
         }
         keyboardView = view
@@ -468,13 +608,19 @@ class KaviInputMethodService : InputMethodService() {
             ))
 
             // Add swipe path view as overlay (if swipe typing is enabled)
+            // Make it match keyboard view bounds exactly to avoid layout issues
             if (preferences.isSwipeTypingEnabled() && preferences.isSwipePathVisible()) {
                 val swipePathView = com.kannada.kavi.ui.keyboardview.SwipePathView(this@KaviInputMethodService)
-                addView(swipePathView, android.widget.FrameLayout.LayoutParams(
+                // Match keyboard view size exactly - use same layout params as keyboard view
+                val swipeLayoutParams = android.widget.FrameLayout.LayoutParams(
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-                ))
+                )
+                addView(swipePathView, swipeLayoutParams)
                 view.setSwipePathView(swipePathView)
+                
+                // Keep swipe path overlay above keyboard but non-interactive so touches pass through
+                swipePathView.bringToFront()
             }
         }
 
@@ -636,6 +782,7 @@ class KaviInputMethodService : InputMethodService() {
     override fun onDestroy() {
         super.onDestroy()
 
+        clipboardManager.stopSystemListener()
         // Unregister preference change listener
         preferences.unregisterChangeListener(preferenceChangeListener)
 
@@ -661,7 +808,7 @@ class KaviInputMethodService : InputMethodService() {
 
         // Clean up keyboard view
         keyboardView = null
-        clipboardPopup = null
+        clipboardStripView = null
         emojiBoardView = null
     }
 
@@ -731,6 +878,7 @@ class KaviInputMethodService : InputMethodService() {
         if (::analyticsManager.isInitialized) {
             val keyType = when (key.type) {
                 KeyType.CHARACTER -> "character"
+                KeyType.COMMA_EMOJI -> "comma_emoji"
                 KeyType.DELETE -> "delete"
                 KeyType.ENTER -> "enter"
                 KeyType.SPACE -> "space"
@@ -741,13 +889,19 @@ class KaviInputMethodService : InputMethodService() {
                 KeyType.CLIPBOARD -> "clipboard"
                 else -> "other"
             }
-            analyticsManager.trackKeyPress(keyType, if (key.type == KeyType.CHARACTER) key.output else null)
+            val recordedOutput = if (key.type == KeyType.CHARACTER || key.type == KeyType.COMMA_EMOJI) {
+                key.output
+            } else {
+                null
+            }
+            analyticsManager.trackKeyPress(keyType, recordedOutput)
             sessionKeyPressCount++
         }
 
         // Play appropriate sound effect and vibration feedback
         when (key.type) {
-            KeyType.CHARACTER -> {
+            KeyType.CHARACTER,
+            KeyType.COMMA_EMOJI -> {
                 soundManager.playStandardClick()
                 vibrationManager.vibrateStandardKey()
             }
@@ -780,7 +934,8 @@ class KaviInputMethodService : InputMethodService() {
 
         // Handle the key action
         when (key.type) {
-            KeyType.CHARACTER -> onKeyPressed(key.output)
+            KeyType.CHARACTER,
+            KeyType.COMMA_EMOJI -> onKeyPressed(key.output)
             KeyType.DELETE -> onDeletePressed()
             KeyType.ENTER -> onEnterPressed()
             KeyType.SPACE -> onSpacePressed()
@@ -815,6 +970,11 @@ class KaviInputMethodService : InputMethodService() {
         // If phonetic layout is active, buffer roman input and replace inline with Kannada
         val activeLayoutId = layoutManager.activeLayout.value?.id
         val isPhonetic = activeLayoutId == Constants.Layouts.LAYOUT_PHONETIC
+        val adjustedOutput = if (!isPhonetic) {
+            applyAutoCapitalizationIfNeeded(keyOutput)
+        } else {
+            keyOutput
+        }
 
 
         if (isPhonetic && isTransliterationReady && keyOutput.isNotEmpty()) {
@@ -878,8 +1038,8 @@ class KaviInputMethodService : InputMethodService() {
             // Kavi layout or other layouts: commit character directly
             // For Kavi, Kannada characters are typed directly without transliteration
             // But we need to handle matra combining: consonant + matra should combine
-            handleKaviKeyPress(keyOutput)
-        }
+              handleKaviKeyPress(adjustedOutput)
+          }
 
         // Disable shift after typing (if not caps lock)
         layoutManager.disableShiftAfterInput()
@@ -965,6 +1125,37 @@ class KaviInputMethodService : InputMethodService() {
         inputConnectionHandler.commitText(keyOutput)
         markInternalEdit()
         resetPhoneticState()
+    }
+
+    private fun applyAutoCapitalizationIfNeeded(input: String): String {
+        if (!preferences.isAutoCapitalizationEnabled()) return input
+        if (input.length != 1) return input
+        val ch = input[0]
+        if (ch !in 'a'..'z') return input
+        return if (shouldCapitalizeNextChar()) {
+            ch.titlecaseChar().toString()
+        } else {
+            input
+        }
+    }
+
+    private fun shouldCapitalizeNextChar(): Boolean {
+        val ic = currentInputConnection ?: return false
+        val before = ic.getTextBeforeCursor(4, 0)?.toString() ?: return true
+        if (before.isEmpty()) return true
+        val lastChar = before.last()
+        if (lastChar == '\n') return true
+        if (lastChar.isWhitespace()) {
+            val trimmed = before.trimEnd()
+            if (trimmed.isEmpty()) return true
+            val prev = trimmed.last()
+            return prev == '\n' || isSentenceTerminator(prev)
+        }
+        return isSentenceTerminator(lastChar)
+    }
+
+    private fun isSentenceTerminator(char: Char): Boolean {
+        return char == '.' || char == '!' || char == '?'
     }
 
     /**
@@ -1089,6 +1280,85 @@ class KaviInputMethodService : InputMethodService() {
 
         // Clear suggestions
         suggestionStripView?.clear()
+    }
+
+    /**
+     * Move cursor left or right
+     * @param steps Number of characters to move (negative for left, positive for right)
+     */
+    private fun moveCursor(steps: Int) {
+        val ic = currentInputConnection ?: return
+
+        if (steps > 0) {
+            // Move right
+            repeat(steps) {
+                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_RIGHT))
+                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_RIGHT))
+            }
+        } else if (steps < 0) {
+            // Move left
+            repeat(-steps) {
+                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_LEFT))
+                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_LEFT))
+            }
+        }
+    }
+
+    /**
+     * Select text by moving cursor with shift held
+     * @param steps Number of characters to select (negative for left, positive for right)
+     */
+    private fun selectText(steps: Int) {
+        val ic = currentInputConnection ?: return
+
+        // Get current cursor position
+        val extracted = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+        val currentPos = extracted?.selectionStart ?: return
+
+        if (steps != 0) {
+            // Calculate new selection position
+            val newPos = (currentPos + steps).coerceAtLeast(0)
+
+            // Set selection from current position to new position
+            if (steps > 0) {
+                ic.setSelection(currentPos, newPos)
+            } else {
+                ic.setSelection(newPos, currentPos)
+            }
+        }
+    }
+
+    /**
+     * Delete the previous word
+     */
+    private fun deleteWord() {
+        val ic = currentInputConnection ?: return
+
+        // Get text before cursor
+        val textBefore = ic.getTextBeforeCursor(100, 0) ?: return
+        if (textBefore.isEmpty()) return
+
+        // Find word boundary
+        var deleteLength = 0
+        var foundNonSpace = false
+
+        for (i in textBefore.length - 1 downTo 0) {
+            val char = textBefore[i]
+            if (char.isWhitespace()) {
+                if (foundNonSpace) {
+                    // Found word boundary
+                    break
+                }
+            } else {
+                foundNonSpace = true
+            }
+            deleteLength++
+        }
+
+        // Delete the word
+        if (deleteLength > 0) {
+            ic.deleteSurroundingText(deleteLength, 0)
+        }
     }
 
     /**
@@ -1249,9 +1519,19 @@ class KaviInputMethodService : InputMethodService() {
                         view.setLayoutName(layoutName)
                     }
 
-                    // Force redraw
-                    view.invalidate()
-                    view.requestLayout()
+                    // CRITICAL: Force key bounds recalculation after layout switch
+                    // This ensures gesture tracking aligns with new layout
+                    // Post to ensure layout is measured first
+                    view.post {
+                        if (view.width > 0 && view.height > 0) {
+                            // Layout is measured, bounds will be recalculated in setKeyboard
+                            view.invalidate()
+                            android.util.Log.d("KaviIME", "onLanguagePressed: Key bounds should be recalculated")
+                        } else {
+                            // Layout not measured yet, request layout
+                            view.requestLayout()
+                        }
+                    }
                     android.util.Log.d("KaviIME", "onLanguagePressed: View updated successfully")
                 } catch (e: Exception) {
                     // Silently handle any errors to prevent crashes
@@ -1338,6 +1618,34 @@ class KaviInputMethodService : InputMethodService() {
     }
 
     /**
+     * Handle icon click
+     *
+     * Called when user taps an icon in the suggestion strip
+     *
+     * @param iconType The tapped icon type
+     */
+    private fun onIconClicked(iconType: IconType) {
+        when (iconType) {
+            IconType.VIEW_COZY -> {
+                // TODO: Implement compact view toggle or other functionality
+            }
+            IconType.CONTENT_PASTE -> {
+                // Show clipboard popup
+                showClipboardPopup()
+            }
+            IconType.SETTINGS -> {
+                // TODO: Open settings activity
+            }
+            IconType.PALETTE -> {
+                // TODO: Open theme selector
+            }
+            IconType.MIC -> {
+                // TODO: Start voice input
+            }
+        }
+    }
+
+    /**
      * Handle suggestion click
      *
      * Called when user taps a suggestion in the strip
@@ -1402,75 +1710,47 @@ class KaviInputMethodService : InputMethodService() {
     }
 
     /**
-     * Show clipboard history popup
+     * Show clipboard strip
      *
-     * Displays a popup window with clipboard history above the keyboard
+     * Displays the FlorisBoard-style horizontal clipboard strip above the keyboard
      */
     private fun showClipboardPopup() {
-        // Create popup view if needed
-        val popupView = ClipboardPopupView(this).apply {
-            // Set clipboard items
-            setItems(clipboardManager.items.value)
-
-            // Handle item click (paste)
-            setOnItemClickListener { item ->
-                // Paste the clipboard item
-                val text = clipboardManager.pasteItem(item.id)
-                if (text != null) {
-                    finalizePhoneticBuffer()
-                    resetPhoneticState()
-                    inputConnectionHandler.commitText(text)
-                    markInternalEdit()
-                }
-                hideClipboardPopup()
-            }
-
-            // Handle close button
-            setOnCloseListener {
-                hideClipboardPopup()
-            }
-
-            // Handle pin toggle
-            setOnPinToggleListener { item ->
-                clipboardManager.setPinned(item.id, !item.isPinned)
-                // Update popup with new data
-                setItems(clipboardManager.items.value)
-            }
-
-            // Handle delete
-            setOnDeleteListener { item ->
-                clipboardManager.deleteItem(item.id)
-                // Update popup with new data
-                setItems(clipboardManager.items.value)
-            }
+        if (isClipboardStripVisible) {
+            hideClipboardStrip()
+            return
         }
 
-        // Create popup window with responsive dimensions
-        val density = resources.displayMetrics.density
-        val screenWidth = resources.displayMetrics.widthPixels
-        val popupWidth = (screenWidth * 0.9f).toInt()  // 90% of screen width
-        val popupHeight = (400f * density).toInt()  // 400dp height
+        // Hide emoji board if visible
+        if (isEmojiBoardVisible) {
+            hideEmojiBoard()
+        }
 
-        clipboardPopup = PopupWindow(
-            popupView,
-            popupWidth,
-            popupHeight,
-            true
-        ).apply {
-            // Show popup above keyboard
-            val keyboardView = keyboardView
-            if (keyboardView != null) {
-                showAtLocation(keyboardView, Gravity.BOTTOM, 0, keyboardView.height)
-            }
+        // Update clipboard items and show
+        clipboardStripView?.apply {
+            setItems(clipboardManager.items.value)
+            visibility = View.VISIBLE
+        }
+        isClipboardStripVisible = true
+
+        // Track analytics
+        if (::analyticsManager.isInitialized) {
+            analyticsManager.trackClipboardUsed(clipboardManager.items.value.size)
         }
     }
 
     /**
-     * Hide clipboard popup
+     * Hide clipboard strip
      */
     private fun hideClipboardPopup() {
-        clipboardPopup?.dismiss()
-        clipboardPopup = null
+        hideClipboardStrip()
+    }
+
+    /**
+     * Hide clipboard strip (internal)
+     */
+    private fun hideClipboardStrip() {
+        clipboardStripView?.visibility = View.GONE
+        isClipboardStripVisible = false
     }
 
     /**
@@ -1583,5 +1863,6 @@ class KaviInputMethodService : InputMethodService() {
 
     companion object {
         private const val INTERNAL_SELECTION_GRACE_MS = 150L
+        private const val PREF_KEY_KEYBOARD_HEIGHT = "keyboard_height_percentage"
     }
 }
