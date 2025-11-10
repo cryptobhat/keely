@@ -53,10 +53,16 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:keyboard-engine"))
     implementation(project(":core:layout-manager"))
+    implementation(project(":data:preferences"))
+    implementation(project(":data:repositories"))
     implementation(project(":features:suggestion-engine"))
     implementation(project(":features:clipboard"))
     implementation(project(":features:converter"))
+    implementation(project(":features:themes"))
+    implementation(project(":features:voice"))
+    implementation(project(":features:analytics"))
     implementation(project(":ui:keyboard-view"))
+    implementation(project(":ui:popup-views"))
 
     // TODO: Add Hilt back when ready
     // implementation(libs.hilt.android)

@@ -18,6 +18,13 @@ android {
     defaultConfig {
         minSdk = 24
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Room schema export configuration for database migration testing
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+            arg("room.incremental", "true")
+            arg("room.expandProjection", "true")
+        }
     }
 
     buildTypes {
@@ -39,7 +46,7 @@ android {
         jvmTarget = "11"
     }
 
-    
+
 }
 
 dependencies {
@@ -60,6 +67,10 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.truth)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.truth)
 }

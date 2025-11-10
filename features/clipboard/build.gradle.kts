@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -48,9 +50,9 @@ dependencies {
 
     // Module-specific dependencies
     implementation(project(":core:common"))
-    // TODO: Add data layer when implemented
-    // implementation(project(":data:database"))
-    // implementation(project(":data:repositories"))
+    implementation(project(":data:database"))
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
 
     // Testing
     testImplementation(libs.junit)

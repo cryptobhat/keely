@@ -3,6 +3,7 @@ package com.kannada.kavi.features.suggestion
 import android.content.Context
 import com.kannada.kavi.core.common.Constants
 import com.kannada.kavi.core.common.Result
+import com.kannada.kavi.data.repositories.UserHistoryRepository
 import com.kannada.kavi.features.suggestion.correction.TypoCorrector
 import com.kannada.kavi.features.suggestion.dictionary.DictionaryLoader
 import com.kannada.kavi.features.suggestion.ml.ContextManager
@@ -69,7 +70,10 @@ import kotlinx.coroutines.withContext
  * - Suggestions update: < 50ms
  * - Background loading: Doesn't block keyboard
  */
-class SuggestionEngine(private val context: Context) {
+class SuggestionEngine(
+    private val context: Context,
+    private val userHistoryRepository: UserHistoryRepository? = null
+) {
 
     // Dictionary loader for loading word lists from assets
     private val dictionaryLoader = DictionaryLoader(context)
@@ -241,8 +245,8 @@ class SuggestionEngine(private val context: Context) {
             // Increase frequency in user history
             userHistoryTrie.incrementFrequency(suggestion.word, increment = 1)
 
-            // TODO: Save to database for persistence
-            // userHistoryRepository.recordWord(suggestion.word)
+            // Save to database for persistence
+            userHistoryRepository?.recordWord(suggestion.word, language = "kannada")
 
             // TODO: Update ML model with this choice
             // predictionModel.learn(suggestion.word, context)
@@ -266,8 +270,8 @@ class SuggestionEngine(private val context: Context) {
             // Track word for ML context (NEW!)
             contextManager.trackTypingContext(word)
 
-            // TODO: Save to database
-            // userHistoryRepository.recordWord(word)
+            // Save to database
+            userHistoryRepository?.recordWord(word, language = "kannada")
         }
     }
 
@@ -298,8 +302,8 @@ class SuggestionEngine(private val context: Context) {
         scope.launch {
             userHistoryTrie.clear()
 
-            // TODO: Clear database
-            // userHistoryRepository.clearAll()
+            // Clear database
+            userHistoryRepository?.clearAll()
         }
     }
 
@@ -447,15 +451,17 @@ class SuggestionEngine(private val context: Context) {
      */
     private suspend fun loadUserHistory() = withContext(Dispatchers.IO) {
         try {
-            // TODO: Load from database
-            /*
-            val userWords = userHistoryRepository.getAllWords()
-            userWords.forEach { (word, frequency) ->
-                userHistoryTrie.insert(word, frequency)
+            // Load from database
+            if (userHistoryRepository != null) {
+                val userWords = userHistoryRepository.getAllWords(limit = 5000)
+                userWords.forEach { userTypedWord ->
+                    userHistoryTrie.insert(userTypedWord.word, userTypedWord.frequency)
+                }
+                println("Loaded ${userWords.size} words from user history database")
             }
-            */
         } catch (e: Exception) {
             e.printStackTrace()
+            println("Failed to load user history from database: ${e.message}")
         }
     }
 

@@ -104,6 +104,15 @@ class KeyboardPreferences(context: Context) {
 
     fun isVoiceInputEnabled(): Boolean = prefs.getBoolean(KEY_VOICE, true)
 
+    // Keyboard height adjustment (percentage: 70-130, default 100)
+    fun setKeyboardHeightPercentage(percentage: Int) {
+        // Clamp to valid range
+        val clampedPercentage = percentage.coerceIn(70, 130)
+        prefs.edit().putInt(KEY_KEYBOARD_HEIGHT, clampedPercentage).apply()
+    }
+
+    fun getKeyboardHeightPercentage(): Int = prefs.getInt(KEY_KEYBOARD_HEIGHT, 100)
+
     // Utility methods
     fun getString(key: String, defaultValue: String? = null): String? {
         return prefs.getString(key, defaultValue)
@@ -149,6 +158,20 @@ class KeyboardPreferences(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    /**
+     * Register a listener for preference changes
+     */
+    fun registerChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    /**
+     * Unregister a preference change listener
+     */
+    fun unregisterChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
     companion object {
         private const val PREFS_NAME = "keyboard_preferences"
 
@@ -170,5 +193,8 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_PREDICTIVE = "predictive_text"
         private const val KEY_SWIPE = "swipe_typing"
         private const val KEY_VOICE = "voice_input"
+
+        // Keyboard appearance keys
+        private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percentage"
     }
 }

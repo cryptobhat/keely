@@ -48,6 +48,7 @@ dependencies {
 
     // Module-specific dependencies
     implementation(project(":core:common"))
+    implementation(project(":data:repositories"))
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)

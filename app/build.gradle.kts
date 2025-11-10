@@ -8,6 +8,8 @@
  * instruments (modules) to create a beautiful symphony (the keyboard app)!
  */
 
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -37,6 +39,15 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        
+        // Load Bhashini API key from local.properties
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localProperties.load(localPropertiesFile.inputStream())
+        }
+        val bhashiniApiKey = localProperties.getProperty("BHASHINI_API_KEY") ?: ""
+        buildConfigField("String", "BHASHINI_API_KEY", "\"$bhashiniApiKey\"")
     }
 
     buildTypes {
@@ -67,6 +78,11 @@ android {
     buildFeatures {
         compose = true
         viewBinding = true
+        buildConfig = true
+    }
+
+    androidResources {
+        noCompress += listOf("tflite", "bin")
     }
 
     packaging {
@@ -87,6 +103,14 @@ dependencies {
     implementation(project(":features:suggestion-engine"))
     implementation(project(":features:clipboard"))
     implementation(project(":features:converter"))
+    implementation(project(":features:themes"))
+    implementation(project(":features:settings"))
+    implementation(project(":features:analytics"))
+
+    // Data modules
+    implementation(project(":data:preferences"))
+    implementation(project(":data:repositories"))
+    implementation(project(":data:database"))
 
     // UI modules - User interface components
     implementation(project(":ui:keyboard-view"))
@@ -126,10 +150,11 @@ dependencies {
     // WorkManager for background tasks
     implementation(libs.androidx.work.runtime.ktx)
 
-    // TODO: Add Firebase back when google-services.json is set up
-    // implementation(platform(libs.firebase.bom))
-    // implementation(libs.firebase.analytics)
-    // implementation(libs.firebase.crashlytics)
+    // Firebase Analytics and Crashlytics
+    // Note: Requires google-services.json in app/ directory
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
 
     // Testing
     testImplementation(libs.junit)

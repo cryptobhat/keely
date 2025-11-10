@@ -53,6 +53,8 @@ dependencies {
     implementation(project(":data:database"))
     implementation(project(":data:preferences"))
     implementation(project(":features:themes"))
+    // Note: Cannot depend on features:clipboard due to circular dependency
+    // ClipboardRepository uses ClipboardItem from features:clipboard
     implementation(libs.hilt.android)
     implementation(libs.gson)
     ksp(libs.hilt.android.compiler)

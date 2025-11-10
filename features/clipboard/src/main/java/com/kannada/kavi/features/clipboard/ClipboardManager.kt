@@ -6,9 +6,13 @@ import android.content.Context
 import com.kannada.kavi.core.common.Constants
 import com.kannada.kavi.features.clipboard.models.ClipboardItem
 import com.kannada.kavi.features.clipboard.models.detectContentType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
@@ -65,7 +69,10 @@ import java.util.UUID
  * UI updates automatically
  * ```
  */
-class ClipboardManager(private val context: Context) {
+class ClipboardManager(
+    private val context: Context,
+    private val clipboardRepository: ClipboardRepository? = null
+) {
 
     // Android system clipboard (for integration)
     private val systemClipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as AndroidClipboardManager
@@ -82,6 +89,38 @@ class ClipboardManager(private val context: Context) {
     private val maxItems = Constants.Clipboard.MAX_HISTORY_ITEMS
     private val maxUndoActions = Constants.Clipboard.MAX_UNDO_STACK_SIZE
 
+    // Coroutine scope for async database operations
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // Track if clipboard has been initialized (loaded from database)
+    private var isInitialized = false
+
+    /**
+     * Initialize clipboard manager by loading history from database.
+     * Call this when keyboard service starts.
+     */
+    fun initialize() {
+        if (isInitialized) return
+
+        scope.launch {
+            try {
+                // Load clipboard history from database
+                if (clipboardRepository != null) {
+                    val savedItems = clipboardRepository.loadHistory(limit = maxItems)
+                    _items.value = savedItems
+                    println("ClipboardManager: Loaded ${savedItems.size} items from database")
+                } else {
+                    println("ClipboardManager: No repository available, starting with empty clipboard")
+                }
+                isInitialized = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("ClipboardManager: Failed to load clipboard history: ${e.message}")
+                isInitialized = true // Mark as initialized even on error to prevent retry loops
+            }
+        }
+    }
+
     /**
      * Add item to clipboard history
      *
@@ -90,37 +129,40 @@ class ClipboardManager(private val context: Context) {
      * @return The created ClipboardItem
      */
     fun addItem(text: String, sourceApp: String? = null): ClipboardItem {
+        val sanitizedText = text.trim().take(Constants.Clipboard.MAX_CLIP_LENGTH)
+
         // Don't add empty text
-        if (text.isBlank()) {
+        if (sanitizedText.isBlank()) {
             return _items.value.firstOrNull() ?: createEmptyItem()
         }
 
         // Don't add duplicates (if same as most recent)
-        if (_items.value.firstOrNull()?.text == text) {
+        if (_items.value.firstOrNull()?.text == sanitizedText) {
             return _items.value.first()
         }
 
         // Create new item
         val item = ClipboardItem(
             id = UUID.randomUUID().toString(),
-            text = text,
+            text = sanitizedText,
             timestamp = System.currentTimeMillis(),
             isPinned = false,
             sourceApp = sourceApp,
-            contentType = detectContentType(text)
+            contentType = detectContentType(sanitizedText)
         )
 
         // Add to history
         val currentItems = _items.value.toMutableList()
         currentItems.add(0, item) // Add to beginning (newest first)
 
-        // Remove oldest if exceeding limit (but keep pinned items)
-        while (currentItems.size > maxItems) {
-            val lastIndex = currentItems.lastIndex
-            if (!currentItems[lastIndex].isPinned) {
-                currentItems.removeAt(lastIndex)
-            } else {
-                break
+        // Remove oldest unpinned entries if exceeding limit
+        if (currentItems.size > maxItems) {
+            var index = currentItems.lastIndex
+            while (currentItems.size > maxItems && index >= 0) {
+                if (!currentItems[index].isPinned) {
+                    currentItems.removeAt(index)
+                }
+                index--
             }
         }
 
@@ -130,8 +172,20 @@ class ClipboardManager(private val context: Context) {
         // Update state
         _items.value = currentItems
 
+        // Save to database
+        scope.launch {
+            try {
+                clipboardRepository?.saveItem(item)
+                // Also trim old items in database
+                clipboardRepository?.trimHistory(maxUnpinned = maxItems)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("ClipboardManager: Failed to save item to database: ${e.message}")
+            }
+        }
+
         // Also copy to system clipboard
-        copyToSystemClipboard(text)
+        copyToSystemClipboard(sanitizedText)
 
         return item
     }
@@ -161,6 +215,16 @@ class ClipboardManager(private val context: Context) {
 
         // Update state
         _items.value = currentItems
+
+        // Delete from database
+        scope.launch {
+            try {
+                clipboardRepository?.deleteItem(itemId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("ClipboardManager: Failed to delete item from database: ${e.message}")
+            }
+        }
 
         return true
     }
@@ -192,6 +256,16 @@ class ClipboardManager(private val context: Context) {
         // Update state
         _items.value = currentItems
 
+        // Update in database
+        scope.launch {
+            try {
+                clipboardRepository?.updatePinStatus(itemId, pinned)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("ClipboardManager: Failed to update pin status in database: ${e.message}")
+            }
+        }
+
         return true
     }
 
@@ -213,6 +287,16 @@ class ClipboardManager(private val context: Context) {
         // Update state
         _items.value = itemsToKeep
 
+        // Delete from database
+        scope.launch {
+            try {
+                clipboardRepository?.deleteAllUnpinned()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("ClipboardManager: Failed to clear clipboard in database: ${e.message}")
+            }
+        }
+
         return clearedCount
     }
 
@@ -232,6 +316,16 @@ class ClipboardManager(private val context: Context) {
 
         // Update state
         _items.value = emptyList()
+
+        // Delete from database
+        scope.launch {
+            try {
+                clipboardRepository?.clearAll()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("ClipboardManager: Failed to clear all clipboard items in database: ${e.message}")
+            }
+        }
 
         return clearedCount
     }

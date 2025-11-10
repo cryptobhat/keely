@@ -48,6 +48,7 @@ dependencies {
 
     // Module-specific dependencies
     implementation(project(":core:common"))
+    implementation(project(":data:repositories"))
 
     // Machine Learning - TensorFlow Lite
     implementation(libs.tensorflow.lite)
