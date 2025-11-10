@@ -443,9 +443,42 @@ class KaviInputMethodService : InputMethodService() {
             // Apply keyboard height adjustment from preferences
             val heightPercentage = preferences.getKeyboardHeightPercentage()
             setKeyboardHeightPercentage(heightPercentage)
+
+            // Configure swipe typing and gestures
+            val swipeEnabled = preferences.isSwipeTypingEnabled()
+            val gesturesEnabled = preferences.isGesturesEnabled()
+            setSwipeTypingEnabled(swipeEnabled)
+            setGesturesEnabled(gesturesEnabled)
+
+            // Set callback for swipe words
+            setOnSwipeWordListener { word ->
+                // Insert the swiped word
+                currentInputConnection?.commitText(word, 1)
+                // Add space after word
+                currentInputConnection?.commitText(" ", 1)
+            }
         }
         keyboardView = view
-        container.addView(view)
+
+        // Create a FrameLayout to hold keyboard + swipe path overlay
+        val keyboardContainer = android.widget.FrameLayout(this).apply {
+            addView(view, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+
+            // Add swipe path view as overlay (if swipe typing is enabled)
+            if (preferences.isSwipeTypingEnabled() && preferences.isSwipePathVisible()) {
+                val swipePathView = com.kannada.kavi.ui.keyboardview.SwipePathView(this@KaviInputMethodService)
+                addView(swipePathView, android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                ))
+                view.setSwipePathView(swipePathView)
+            }
+        }
+
+        container.addView(keyboardContainer)
         
         // Now that we have a window, try to update dynamic colors
         // This is the best time since we have a proper window context
@@ -1470,8 +1503,8 @@ class KaviInputMethodService : InputMethodService() {
                 return
             }
 
-            // Create API service
-            val apiService = BhashiniApiClient.create()
+            // Create API service (using inference service for ASR)
+            val apiService = BhashiniApiClient.createInferenceService()
 
             // Create audio recorder
             val audioRecorder = AudioRecorder()

@@ -34,6 +34,8 @@ fun SettingsScreen(
     onNavigateToLayouts: () -> Unit = {},
     onNavigateToConverter: () -> Unit = {},
     onNavigateToTts: () -> Unit = {},
+    onNavigateToGestures: () -> Unit = {},
+    onNavigateToClipboard: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {}
 ) {
     // State
@@ -274,8 +276,7 @@ fun SettingsScreen(
                         onCheckedChange = { checked ->
                             swipeTyping = checked
                             preferences.setSwipeTyping(checked)
-                        },
-                        enabled = false // Feature not implemented yet
+                        }
                     )
 
                     SettingsDivider()
@@ -328,20 +329,18 @@ fun SettingsScreen(
                 SettingsCard {
                     SettingsNavigationItem(
                         title = "Gesture Settings",
-                        description = "Customize swipe gestures",
+                        description = "Customize swipe gestures and controls",
                         icon = Icons.Default.Gesture,
-                        onClick = { /* TODO: Navigate to gesture settings */ },
-                        enabled = false
+                        onClick = onNavigateToGestures
                     )
 
                     SettingsDivider()
 
                     SettingsNavigationItem(
                         title = "Clipboard Manager",
-                        description = "Manage clipboard history",
+                        description = "Configure clipboard history",
                         icon = Icons.Default.ContentPaste,
-                        onClick = { /* TODO: Navigate to clipboard settings */ },
-                        enabled = false
+                        onClick = onNavigateToClipboard
                     )
 
                     SettingsDivider()

@@ -14,7 +14,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kannada.kavi.data.preferences.KeyboardPreferences
+import com.kannada.kavi.features.settings.ui.ClipboardSettingsScreen
 import com.kannada.kavi.features.settings.ui.ConverterScreen
+import com.kannada.kavi.features.settings.ui.GestureSettingsScreen
 import com.kannada.kavi.features.settings.ui.LayoutSelectionScreen
 import com.kannada.kavi.features.settings.ui.SettingsScreen
 import com.kannada.kavi.features.settings.ui.TextToSpeechScreen
@@ -162,6 +164,12 @@ fun SettingsApp(
                     onNavigateToTts = {
                         navController.navigate("tts")
                     },
+                    onNavigateToGestures = {
+                        navController.navigate("gestures")
+                    },
+                    onNavigateToClipboard = {
+                        navController.navigate("clipboard")
+                    },
                     onNavigateToAbout = {
                         // TODO: Navigate to about screen
                     }
@@ -200,6 +208,26 @@ fun SettingsApp(
             // Text-to-Speech settings screen
             composable("tts") {
                 TextToSpeechScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // Gesture settings screen
+            composable("gestures") {
+                GestureSettingsScreen(
+                    preferences = preferences,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // Clipboard settings screen
+            composable("clipboard") {
+                ClipboardSettingsScreen(
+                    preferences = preferences,
                     onNavigateBack = {
                         navController.popBackStack()
                     }

@@ -1,20 +1,33 @@
-package com.kannada.kavi.ui.keyboardview
+﻿package com.kannada.kavi.ui.keyboardview
 
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PointF
 import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.View.MeasureSpec
 import android.view.animation.DecelerateInterpolator
+import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.TextView
 import androidx.core.animation.doOnEnd
+import androidx.core.graphics.ColorUtils
+import com.kannada.kavi.ui.keyboardview.R
 import com.kannada.kavi.core.layout.models.Key
 import com.kannada.kavi.core.layout.models.KeyboardRow
-import com.kannada.kavi.features.themes.DeshDesignSystem
-import com.kannada.kavi.features.themes.KeyboardTheme
+import com.kannada.kavi.features.themes.KeyboardDesignSystem
 import kotlin.math.min
 
 /**
@@ -64,14 +77,26 @@ class KeyboardView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
+    companion object {
+        private const val LONG_PRESS_TIMEOUT_MS = 350L
+        private const val LONG_PRESS_POPUP_OFFSET_DP = 8f
+        private const val LONG_PRESS_POPUP_PADDING_DP = 8f
+        private const val LONG_PRESS_OPTION_MARGIN_DP = 4f
+        private const val LONG_PRESS_OPTION_PADDING_DP = 10f
+    }
+
     // Keyboard data
     private var rows: List<KeyboardRow> = emptyList()
     private var keyBounds: MutableList<KeyBound> = mutableListOf()
+    private var currentEnterAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_NONE
+    private var isEmojiBoardVisible: Boolean = false
 
-    // Theme (Desh design system)
-    private var theme: KeyboardTheme = DeshDesignSystem.createDeshTheme(context)
+    // Height adjustment (percentage: 70-130, default 100)
+    private var heightPercentage: Int = 100
 
-    // Paint objects (reused for performance)
+    // Design system - exact screenshot values
+
+    // Material You Paint objects (reused for performance)
     private val keyBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
@@ -84,51 +109,96 @@ class KeyboardView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
+    // Material You uses minimal borders or no borders
     private val keyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
     }
 
+    // Typography paint with proper Material You font settings
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        // Gboard uses slightly bolder text for better readability
-        typeface = android.graphics.Typeface.create(
-            android.graphics.Typeface.DEFAULT,
-            android.graphics.Typeface.NORMAL
-        )
+        // Material You uses medium weight (500) for key labels
+        typeface = android.graphics.Typeface.DEFAULT
+        // Improve glyph rendering for complex scripts
+        isSubpixelText = true
+        isLinearText = true
     }
 
+    // Hint text paint (number hints etc.)
+    private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.LEFT
+    }
+
+    // Space bar label paint
+    private val spaceBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT
+        isSubpixelText = true
+        isLinearText = true
+    }
+
+    // Material You ripple effect
     private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
-    // Shadow for key depth (Desh design system)
+    // Long press support
+    private val longPressHandler = Handler(Looper.getMainLooper())
+    private var longPressRunnable: Runnable? = null
+    private var longPressTarget: KeyBound? = null
+    private var longPressPopup: PopupWindow? = null
+
+    // Swipe typing and gesture support
+    private var swipeGestureDetector: SwipeGestureDetector? = null
+    private var swipePathView: SwipePathView? = null
+    private var isSwipeTypingEnabled = false
+    private var isGesturesEnabled = false
+
+    // Swipe word callback - will be set by IME service
+    private var onSwipeWord: ((String) -> Unit)? = null
+
+    // Material You elevation shadow (very subtle, tonal)
     private val keyShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        maskFilter = android.graphics.BlurMaskFilter(
-            DeshDesignSystem.Dimensions.KEY_SHADOW_RADIUS * resources.displayMetrics.density,
-            android.graphics.BlurMaskFilter.Blur.NORMAL
-        )
+        // Material You uses very subtle shadows
+    }
+
+    // Material You tonal elevation paint for surface tints
+    private val elevationTintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
     }
 
     private val keyHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+
+    // Special keys use surface variant color
     private val specialKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     private val specialKeyPressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+
+    // Spacebar paint (for text color - spacebar background is white)
+    private val spacebarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+
+    // Action key uses primary color
     private val actionKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     private val actionKeyPressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+
+    // Material UI outlined icon style
     private val iconStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
+        strokeWidth = 2.5f  // Material outlined icon standard stroke (will be scaled by density)
     }
 
     private val specialKeyTypes = setOf(
@@ -169,98 +239,183 @@ class KeyboardView @JvmOverloads constructor(
     private var keyboardWidth = 0f
     private var keyboardHeight = 0f
 
-    // Spacing between keys - much tighter for modern look
-    private var keyHorizontalSpacing = 3f  // Reduced from theme default for tighter layout
-    private var keyVerticalSpacing = 4f   // Reduced from theme default for compact height
-    private var rowPadding = 4f           // Side padding for the keyboard (in px)
+    // Chip-style spacing (from screenshot - visible gaps between keys)
+    private var keyHorizontalSpacing = 6f  // 6dp base spacing + inset = visible chip gaps
+    private var keyVerticalSpacing = 6f   // 6dp base spacing + inset = visible chip gaps
+    private var rowPaddingStart = 8f      // 8dp keyboard inset
+    private var rowPaddingEnd = 8f        // 8dp keyboard inset
+
+    private val density: Float
+        get() = resources.displayMetrics.density
+
+    // Current layout name to display on spacebar
+    private var currentLayoutName: String = ""
 
     init {
-        // Apply Desh theme
-        applyTheme(theme)
+        // Apply colors and setup
+        applyColors()
 
-        // Apply responsive padding from Desh design system
-        val density = resources.displayMetrics.density
-        val padding = DeshDesignSystem.getKeyboardPadding(context)
+        // Apply padding for chip-style keyboard (top and bottom padding for proper spacing)
+        val padding = KeyboardDesignSystem.getKeyboardPadding(context)
         setPadding(
-            (padding.left * density).toInt(),
-            (padding.top * density).toInt(),
-            (padding.right * density).toInt(),
-            (padding.bottom * density).toInt()
+            padding.left.toInt(),
+            padding.top.toInt(),  // 8dp - top padding for first row
+            padding.right.toInt(),
+            padding.bottom.toInt()  // 8dp - bottom padding after last row
         )
 
-        // Set background to match Desh design
-        setBackgroundColor(DeshDesignSystem.Colors.KEYBOARD_BACKGROUND)
+        // Set background
+        setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
+
+        // Initialize swipe gesture detector
+        initializeSwipeComponents()
     }
 
     /**
-     * Set Material You theme
-     *
-     * Applies all theme properties: colors, typography, shape, spacing, interactions.
-     *
-     * @param theme KeyboardTheme to apply
+     * Initialize swipe typing and gesture components
      */
-    fun setTheme(theme: KeyboardTheme) {
-        this.theme = theme
-        applyTheme(theme)
-        calculateKeyBounds() // Recalculate with new spacing
+    private fun initializeSwipeComponents() {
+        // Create swipe gesture detector
+        swipeGestureDetector = SwipeGestureDetector().apply {
+            setDensity(density)
+            setListener(object : SwipeGestureDetector.GestureListener {
+                override fun onTap(x: Float, y: Float) {
+                    // Handle as normal tap
+                    handleTouchDown(x, y)
+                    handleTouchUp(x, y)
+                }
+
+                override fun onLongPress(x: Float, y: Float) {
+                    // Handle long press
+                    handleTouchDown(x, y)
+                }
+
+                override fun onSwipeStart(x: Float, y: Float) {
+                    // Start swipe path visualization
+                    swipePathView?.startSwipe(x, y)
+                }
+
+                override fun onSwipeMove(x: Float, y: Float, path: List<android.graphics.PointF>) {
+                    // Update swipe path visualization
+                    swipePathView?.updatePath(x, y)
+                }
+
+                override fun onSwipeEnd(gesture: SwipeGesture) {
+                    // End swipe and extract text
+                    swipePathView?.endSwipe()
+
+                    // Only handle swipe typing gestures
+                    if (gesture.type == SwipeType.SWIPE_TYPE) {
+                        // Get letters from path
+                        val word = extractWordFromPath(gesture.path)
+                        if (word.isNotEmpty()) {
+                            onSwipeWord?.invoke(word)
+                        }
+                    }
+                }
+
+                override fun onSwipeCancel() {
+                    // Cancel swipe
+                    swipePathView?.cancelSwipe()
+                }
+            })
+        }
+    }
+
+    /**
+     * Extract word from swipe path by checking which keys were touched
+     */
+    private fun extractWordFromPath(path: List<android.graphics.PointF>): String {
+        val letters = mutableListOf<String>()
+        var lastKey: Key? = null
+
+        path.forEach { point ->
+            findKeyAt(point.x, point.y)?.let { keyBound ->
+                // Only add if it's a different key than last
+                if (keyBound.key != lastKey && keyBound.key.label.length == 1) {
+                    letters.add(keyBound.key.label)
+                    lastKey = keyBound.key
+                }
+            }
+        }
+
+        return letters.joinToString("")
+    }
+
+    /**
+     * Set theme (no-op - using design system constants)
+     */
+    fun setTheme(theme: Any) {
+        // Design system values are constants - just reapply colors
+        applyColors()
+        calculateKeyBounds()
+        setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
         invalidate()
     }
 
     /**
-     * Apply theme to all Paint objects
-     *
-     * Updates colors, sizes, and styles from theme.
+     * Apply colors to all Paint objects from design system
+     * Uses dynamic colors if available, otherwise falls back to static colors
      */
-    private fun applyTheme(theme: KeyboardTheme) {
+    private fun applyColors() {
         val density = resources.displayMetrics.density
 
-        // Apply colors
-        keyBackgroundPaint.color = theme.colors.keyNormal
-        keyPressedPaint.color = theme.colors.keyPressed
-        keySelectedPaint.color = theme.colors.keySelected
-        specialKeyPaint.color = DeshDesignSystem.Colors.SPECIAL_KEY_BACKGROUND
-        specialKeyPressedPaint.color = DeshDesignSystem.Colors.SPECIAL_KEY_PRESSED
-        actionKeyPaint.color = DeshDesignSystem.Colors.ACTION_KEY_BACKGROUND
-        actionKeyPressedPaint.color = DeshDesignSystem.Colors.ACTION_KEY_PRESSED
+        // Apply colors from design system (dynamic if available)
+        keyBackgroundPaint.color = KeyboardDesignSystem.Colors.KEY_BACKGROUND_DYNAMIC
+        keyPressedPaint.color = KeyboardDesignSystem.Colors.KEY_PRESSED_DYNAMIC
+        keySelectedPaint.color = KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC
+        specialKeyPaint.color = KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC
+        specialKeyPressedPaint.color = KeyboardDesignSystem.Colors.SPECIAL_KEY_PRESSED_DYNAMIC
+        actionKeyPaint.color = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND_DYNAMIC
+        actionKeyPressedPaint.color = KeyboardDesignSystem.Colors.ACTION_KEY_PRESSED_DYNAMIC
+        spacebarPaint.color = KeyboardDesignSystem.Colors.SPACEBAR_TEXT_DYNAMIC
 
         keyBorderPaint.apply {
-            color = theme.colors.keyBorder
-            strokeWidth = theme.shape.borderWidth * density
+            color = 0x00000000.toInt()  // No border
+            strokeWidth = 0f
         }
 
-        iconStrokePaint.strokeWidth = 2.5f * density
+        iconStrokePaint.strokeWidth = KeyboardDesignSystem.Dimensions.ICON_STROKE_WIDTH * density
 
         labelPaint.apply {
-            color = theme.colors.onSurface
-            textSize = theme.typography.buttonSize * resources.displayMetrics.scaledDensity
-            typeface = android.graphics.Typeface.create(
-                "google_sans", // Will fallback to system font if not available
-                when (theme.typography.labelWeight) {
-                    500 -> android.graphics.Typeface.NORMAL
-                    600 -> android.graphics.Typeface.BOLD
-                    else -> android.graphics.Typeface.NORMAL
-                }
-            )
+            color = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+            textSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.KEY_LABEL)
+            typeface = android.graphics.Typeface.DEFAULT
+            isSubpixelText = true
+            isLinearText = true
         }
 
-        ripplePaint.color = theme.colors.ripple
-
-        // Configure shadow paint - very subtle for clean look
-        keyShadowPaint.color = if (theme.mode == com.kannada.kavi.features.themes.ThemeMode.DARK) {
-            0x0A000000.toInt() // rgba(0,0,0,0.04) for dark mode
-        } else {
-            0x08000000.toInt() // rgba(0,0,0,0.03) very subtle shadow
+        hintPaint.apply {
+            color = KeyboardDesignSystem.Colors.KEY_HINT_TEXT_DYNAMIC
+            textSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.KEY_HINT)
         }
 
-        // Apply responsive spacing from Desh design system
-        val (horizontalSpacing, verticalSpacing) = DeshDesignSystem.getKeySpacing(context)
-        keyHorizontalSpacing = horizontalSpacing * density
-        keyVerticalSpacing = verticalSpacing * density
-        val padding = DeshDesignSystem.getKeyboardPadding(context)
-        rowPadding = padding.left * density
+        spaceBarPaint.apply {
+            color = KeyboardDesignSystem.Colors.SPACEBAR_TEXT_DYNAMIC
+            textSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.SPACEBAR)
+        }
 
-        // Enable hardware acceleration for shadows
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
+        ripplePaint.color = 0x1F000000.toInt()  // Light ripple
+
+        keyShadowPaint.color = 0x00000000.toInt()  // No shadow
+
+        // Apply chip-style spacing from design system, scaled by heightPercentage
+        keyHorizontalSpacing = KeyboardDesignSystem.Dimensions.KEY_HORIZONTAL_GAP * density
+        keyVerticalSpacing = (KeyboardDesignSystem.Dimensions.ROW_VERTICAL_GAP * density * heightPercentage / 100f)
+        val padding = KeyboardDesignSystem.getKeyboardPadding(context)
+        rowPaddingStart = padding.left
+        rowPaddingEnd = padding.right
+
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+    }
+    
+    /**
+     * Refresh colors (call when dynamic theme changes)
+     */
+    fun refreshColors() {
+        applyColors()
+        setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
+        invalidate()
     }
 
     /**
@@ -269,10 +424,60 @@ class KeyboardView @JvmOverloads constructor(
      * @param rows List of keyboard rows from LayoutManager
      */
     fun setKeyboard(rows: List<KeyboardRow>) {
+        android.util.Log.e("KeyboardView", "===== SET KEYBOARD CALLED with ${rows.size} rows =====")
+        android.util.Log.d("KeyboardView", "setKeyboard: Old rows count = ${this.rows.size}, New rows count = ${rows.size}")
         this.rows = rows
         calculateKeyBounds()
         invalidate() // Request redraw
+        requestLayout() // Force layout recalculation
+        android.util.Log.e("KeyboardView", "===== SET KEYBOARD COMPLETE - invalidate() and requestLayout() called =====")
     }
+
+    /**
+     * Set the current layout name to display on spacebar
+     *
+     * @param layoutName The name of the current layout (e.g., "Phonetic", "Kavi", "QWERTY")
+     */
+    fun setLayoutName(layoutName: String) {
+        android.util.Log.d("KeyboardView", "setLayoutName: Setting to '$layoutName'")
+        this.currentLayoutName = layoutName
+        invalidate() // Redraw to update spacebar label
+        android.util.Log.d("KeyboardView", "setLayoutName: Spacebar label updated")
+    }
+    
+    /**
+     * Set the enter key action type for context-aware icon
+     */
+    fun setEnterAction(action: Int) {
+        currentEnterAction = action
+        invalidate()
+    }
+    
+    /**
+     * Set emoji board visibility state for icon toggle
+     */
+    fun setEmojiBoardVisible(visible: Boolean) {
+        isEmojiBoardVisible = visible
+        invalidate()
+    }
+
+    /**
+     * Set keyboard height percentage (70-130%)
+     *
+     * @param percentage Height percentage (70 = 70%, 100 = default, 130 = 130%)
+     */
+    fun setKeyboardHeightPercentage(percentage: Int) {
+        val clampedPercentage = percentage.coerceIn(70, 130)
+        if (heightPercentage != clampedPercentage) {
+            heightPercentage = clampedPercentage
+            requestLayout() // Trigger re-measure with new height
+        }
+    }
+
+    /**
+     * Get current keyboard height percentage
+     */
+    fun getKeyboardHeightPercentage(): Int = heightPercentage
 
     /**
      * Set listener for key press events
@@ -281,6 +486,45 @@ class KeyboardView @JvmOverloads constructor(
      */
     fun setOnKeyPressListener(listener: (Key) -> Unit) {
         this.keyPressListener = listener
+    }
+
+    /**
+     * Enable or disable swipe typing
+     */
+    fun setSwipeTypingEnabled(enabled: Boolean) {
+        isSwipeTypingEnabled = enabled
+        if (enabled) {
+            // Update key bounds for swipe word predictor
+            updateSwipeKeyBounds()
+        }
+    }
+
+    /**
+     * Enable or disable gestures
+     */
+    fun setGesturesEnabled(enabled: Boolean) {
+        isGesturesEnabled = enabled
+    }
+
+    /**
+     * Set swipe path view for visual feedback
+     */
+    fun setSwipePathView(pathView: SwipePathView) {
+        swipePathView = pathView
+    }
+
+    /**
+     * Set swipe word callback
+     */
+    fun setOnSwipeWordListener(listener: (String) -> Unit) {
+        onSwipeWord = listener
+    }
+
+    /**
+     * Update key bounds for swipe typing (no-op for now)
+     */
+    private fun updateSwipeKeyBounds() {
+        // Placeholder - will be used when integrating SwipeWordPredictor
     }
 
     /**
@@ -299,47 +543,87 @@ class KeyboardView @JvmOverloads constructor(
         if (rows.isEmpty()) return
 
         // Calculate key dimensions
-        val horizontalInset = rowPadding
-        val availableWidth = width - (paddingLeft + paddingRight) - (horizontalInset * 2)
+        // Remove horizontal insets to eliminate unwanted padding
+        val horizontalInsetStart = 0f
+        val horizontalInsetEnd = 0f
+        val availableWidth = width - (paddingLeft + paddingRight)
         val availableHeight = height - (paddingTop + paddingBottom)
 
-        // Standard keyboard layout uses 10 unit width as reference
-        // Row 1: 10 keys x 1.0 width = 10 units
-        // Row 2: 9 keys x 1.0 width = 9 units (centered)
-        // Row 3: 1.5 + 7x1.0 + 1.5 = 10 units
-        // Row 4: 1.5 + 1.0 + 1.0 + 4.0 + 1.0 + 1.5 = 10 units
-        val standardRowWidth = 10f
+        // Use compact key height scaled by heightPercentage
+        val compactKeyHeightDp = KeyboardDesignSystem.Dimensions.KEY_HEIGHT_COMPACT
+        keyHeight = (compactKeyHeightDp * density * heightPercentage / 100f)
 
-        // Calculate base unit width (width of a standard 1.0 width key)
-        // This ensures consistent key sizes across all rows
-        val totalSpacingWidth = (9 * keyHorizontalSpacing) // Assuming 10 keys with 9 spaces between them
-        val baseUnitWidth = (availableWidth - totalSpacingWidth) / standardRowWidth
+        // Calculate base unit width from first row to fill available width
+        // This ensures consistent key sizing across all rows
+        val firstRow = rows.firstOrNull()
+        val firstRowSumUnits = firstRow?.keys?.fold(0f) { acc, key -> acc + key.width } ?: 0f
+        val firstRowSpaces = if (firstRow != null && firstRow.keyCount > 0) (firstRow.keyCount - 1) * keyHorizontalSpacing else 0f
+        
+        val baseUnitWidth = if (firstRow != null && firstRow.keyCount > 0 && firstRowSumUnits > 0f) {
+            // Calculate unit width to fill available width
+            val firstRowEffectiveWidth = (availableWidth - firstRowSpaces).coerceAtLeast(0f)
+            (firstRowEffectiveWidth / firstRowSumUnits).coerceAtLeast(0.5f)
+        } else {
+            0f
+        }
 
-        // Calculate row height
-        keyHeight = (availableHeight - (rows.size - 1) * keyVerticalSpacing) / rows.size
+        // Calculate first row start position
+        // First row starts from the left edge (paddingLeft only, no extra insets)
+        val firstRowActualWidth = firstRowSumUnits * baseUnitWidth + firstRowSpaces
+        val firstRowStartX = paddingLeft.toFloat()
 
+        // Start from top with minimal padding
         var currentY = paddingTop.toFloat()
 
         rows.forEachIndexed { rowIndex, row ->
-            // Calculate the actual width this row will occupy
-            var rowActualWidth = 0f
-            row.keys.forEach { key ->
-                rowActualWidth += baseUnitWidth * key.width
-            }
-            // Add spacing between keys (not after the last key)
-            if (row.keyCount > 0) {
-                rowActualWidth += (row.keyCount - 1) * keyHorizontalSpacing
+            val isLastRow = rowIndex == rows.size - 1
+
+            // Calculate unit width for this row
+            // Last row needs its own calculation to fill width properly
+            val unitWidth = if (isLastRow) {
+                // Calculate total units for bottom row from JSON widths
+                val bottomRowUnits = row.keys.fold(0f) { acc, key -> acc + key.width }
+                val bottomRowSpaces = if (row.keyCount > 0) (row.keyCount - 1) * keyHorizontalSpacing else 0f
+                val bottomRowEffectiveWidth = (availableWidth - bottomRowSpaces).coerceAtLeast(0f)
+                (bottomRowEffectiveWidth / bottomRowUnits).coerceAtLeast(0.5f)
+            } else {
+                // Other rows use base unit width from first row
+                baseUnitWidth
             }
 
-            // Center all rows for clean alignment
-            // Removed special indentation for second row to maintain proper spacing
-            val rowStartX = paddingLeft + horizontalInset + (availableWidth - rowActualWidth) / 2f
+            // Calculate key widths using JSON values
+            val keyWidths = row.keys.map { key -> unitWidth * key.width }
+
+            // Calculate the actual width this row will occupy using calculated widths
+            var rowActualWidth = keyWidths.sum()
+            // Add spacing between keys (not after the last key)
+            if (row.keyCount > 0) rowActualWidth += (row.keyCount - 1) * keyHorizontalSpacing
+
+            // Calculate row start position for perfect QWERTY alignment
+            // Standard QWERTY layout alignment:
+            // - Row 0 (QWERTY): Starts at left edge
+            // - Row 1 (ASDF): Offset by 0.5 key width (so 'a' sits between 'q' and 'w')
+            // - Row 2 (ZXCV): The shift key takes up space, so 'z' naturally aligns correctly
+            //                 Row starts at left edge, shift pushes letters to the right position
+            // - Row 3+ (bottom row): Starts at left edge
+            val rowStartX = when (rowIndex) {
+                1 -> {
+                    // Row 1 (ASDF row): Offset by half a key width
+                    // This centers 'a' between 'q' and 'w', 'l' between 'o' and 'p'
+                    paddingLeft.toFloat() + (unitWidth * 0.5f)
+                }
+                else -> {
+                    // Row 0 (QWERTY), Row 2 (ZXCV with shift), Row 3+ (bottom row): Start from left edge
+                    // Row 2 shift key automatically positions 'z' correctly between 'a' and 's'
+                    paddingLeft.toFloat()
+                }
+            }
 
             var currentX = rowStartX
 
             row.keys.forEachIndexed { keyIndex, key ->
-                // Calculate key width based on its width multiplier
-                val keyActualWidth = baseUnitWidth * key.width
+                // Use pre-calculated width
+                val keyActualWidth = keyWidths[keyIndex]
 
                 // Create bounds for this key
                 val bounds = RectF(
@@ -360,121 +644,272 @@ class KeyboardView @JvmOverloads constructor(
 
             currentY += keyHeight + keyVerticalSpacing
         }
+
+        // Update swipe key bounds if swipe typing is enabled
+        if (isSwipeTypingEnabled) {
+            updateSwipeKeyBounds()
+        }
     }
 
     private fun drawCustomIcon(canvas: Canvas, key: Key, bounds: RectF): Boolean {
-        return when (key.type) {
+        // Use text-based icons for reliability - they always render correctly
+        val iconText = when (key.type) {
             com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
-                drawSearchIcon(canvas, bounds)
-                true
+                // Context-aware enter icon based on IME_ACTION
+                when (currentEnterAction and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) {
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> "📤" // Send
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH -> "🔍" // Search
+                    android.view.inputmethod.EditorInfo.IME_ACTION_GO -> "➡️" // Go
+                    android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> "⏭️" // Next
+                    android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> "✓" // Done
+                    else -> "⏎" // Default: return/newline
+                }
             }
-            com.kannada.kavi.core.layout.models.KeyType.DELETE -> {
-                drawDeleteIcon(canvas, bounds)
-                true
+            com.kannada.kavi.core.layout.models.KeyType.DELETE -> "⌫"
+            com.kannada.kavi.core.layout.models.KeyType.SHIFT -> "⇧"
+            com.kannada.kavi.core.layout.models.KeyType.LANGUAGE -> "🌐"
+            com.kannada.kavi.core.layout.models.KeyType.EMOJI -> {
+                // Toggle icon: show keyboard icon when emoji board is visible, emoji when keyboard is visible
+                if (isEmojiBoardVisible) "⌨️" else "😊"
             }
-            com.kannada.kavi.core.layout.models.KeyType.SHIFT -> {
-                drawShiftIcon(canvas, bounds)
-                true
+            else -> null
+        }
+        
+        if (iconText != null) {
+            val iconColor = when (key.type) {
+                com.kannada.kavi.core.layout.models.KeyType.ENTER -> KeyboardDesignSystem.Colors.ACTION_KEY_ICON_DYNAMIC
+                com.kannada.kavi.core.layout.models.KeyType.DELETE,
+                com.kannada.kavi.core.layout.models.KeyType.SHIFT -> KeyboardDesignSystem.Colors.SPECIAL_KEY_ICON_DYNAMIC
+                else -> KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
             }
+            
+            val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = iconColor
+                textAlign = Paint.Align.CENTER
+                textSize = min(bounds.width(), bounds.height()) * 0.5f
+                typeface = Typeface.DEFAULT_BOLD
+            }
+            
+            val textY = bounds.centerY() - ((iconPaint.descent() + iconPaint.ascent()) / 2)
+            canvas.drawText(iconText, bounds.centerX(), textY, iconPaint)
+            return true
+        }
+        
+        // Fallback to custom drawing for other types
+        return when (key.type) {
             else -> false
         }
     }
 
+    /**
+     * Draw Material Icons return/enter icon (keyboard_return style)
+     * Simplified, reliable rendering
+     */
     private fun drawSearchIcon(canvas: Canvas, bounds: RectF) {
+        val d = density
+        val iconColor = KeyboardDesignSystem.Colors.ACTION_KEY_ICON_DYNAMIC
+        
         iconStrokePaint.style = Paint.Style.STROKE
-        iconStrokePaint.strokeWidth = bounds.height() * 0.08f
-        iconStrokePaint.color = DeshDesignSystem.Colors.ACTION_KEY_TEXT
+        iconStrokePaint.strokeWidth = 3.5f * d
+        iconStrokePaint.strokeCap = Paint.Cap.ROUND
+        iconStrokePaint.strokeJoin = Paint.Join.ROUND
+        iconStrokePaint.color = iconColor
 
-        val radius = min(bounds.width(), bounds.height()) * 0.22f
-        val centerX = bounds.centerX() - radius * 0.1f
-        val centerY = bounds.centerY() - radius * 0.1f
-        canvas.drawCircle(centerX, centerY, radius, iconStrokePaint)
-
-        val handleLength = radius * 1.2f
-        canvas.drawLine(
-            centerX + radius * 0.8f,
-            centerY + radius * 0.8f,
-            centerX + radius * 0.8f + handleLength,
-            centerY + radius * 0.8f + handleLength,
-            iconStrokePaint
-        )
-    }
-
-    private fun drawDeleteIcon(canvas: Canvas, bounds: RectF) {
-        iconStrokePaint.style = Paint.Style.STROKE
-        iconStrokePaint.strokeWidth = bounds.height() * 0.065f
-        iconStrokePaint.color = DeshDesignSystem.Colors.KEY_TEXT
-
-        val height = bounds.height() * 0.42f
-        val width = bounds.width() * 0.55f
+        val size = min(bounds.width(), bounds.height()) * 0.5f
         val centerX = bounds.centerX()
         val centerY = bounds.centerY()
-        val right = centerX + width / 2f
-        val left = centerX - width / 2f
-        val top = centerY - height / 2f
-        val bottom = centerY + height / 2f
-        val triangleWidth = height * 0.65f
+        val halfSize = size * 0.5f
 
+        // Simple L-shape with arrow - more reliable coordinates
         val path = Path().apply {
-            moveTo(left - triangleWidth, centerY)
-            lineTo(left, top)
-            lineTo(right, top)
-            lineTo(right, bottom)
-            lineTo(left, bottom)
-            close()
+            // Top horizontal line
+            moveTo(centerX - halfSize, centerY - size * 0.15f)
+            lineTo(centerX + halfSize * 0.6f, centerY - size * 0.15f)
+            
+            // Right vertical line down
+            lineTo(centerX + halfSize * 0.6f, centerY + size * 0.35f)
+            
+            // Arrow head pointing down-left
+            lineTo(centerX - halfSize * 0.1f, centerY + size * 0.1f)
+            moveTo(centerX + halfSize * 0.6f, centerY + size * 0.35f)
+            lineTo(centerX + halfSize * 0.25f, centerY + size * 0.5f)
         }
+        canvas.drawPath(path, iconStrokePaint)
+    }
 
+    /**
+     * Draw Material Icons backspace icon
+     * Simplified, reliable rendering
+     */
+    private fun drawDeleteIcon(canvas: Canvas, bounds: RectF) {
+        val d = density
+        val iconColor = KeyboardDesignSystem.Colors.SPECIAL_KEY_ICON_DYNAMIC
+        
+        iconStrokePaint.style = Paint.Style.STROKE
+        iconStrokePaint.strokeWidth = 3.5f * d
+        iconStrokePaint.strokeCap = Paint.Cap.ROUND
+        iconStrokePaint.strokeJoin = Paint.Join.ROUND
+        iconStrokePaint.color = iconColor
+
+        val size = min(bounds.width(), bounds.height()) * 0.5f
+        val centerX = bounds.centerX()
+        val centerY = bounds.centerY()
+        val halfSize = size * 0.5f
+
+        // Left arrow with X - simplified coordinates
+        val path = Path().apply {
+            // Arrow head (pointing left)
+            moveTo(centerX - halfSize, centerY)
+            lineTo(centerX - halfSize * 0.3f, centerY - halfSize * 0.35f)
+            
+            moveTo(centerX - halfSize, centerY)
+            lineTo(centerX - halfSize * 0.3f, centerY + halfSize * 0.35f)
+
+            // Arrow shaft (horizontal line)
+            moveTo(centerX - halfSize * 0.3f, centerY)
+            lineTo(centerX + halfSize * 0.6f, centerY)
+        }
         canvas.drawPath(path, iconStrokePaint)
 
+        // X mark on right side
+        val xSize = halfSize * 0.2f
+        val xOffset = halfSize * 0.4f
+        
         canvas.drawLine(
-            left + width * 0.18f,
-            top + height * 0.2f,
-            right - width * 0.15f,
-            bottom - height * 0.2f,
+            centerX + xOffset - xSize, centerY - xSize,
+            centerX + xOffset + xSize, centerY + xSize,
             iconStrokePaint
         )
         canvas.drawLine(
-            left + width * 0.18f,
-            bottom - height * 0.2f,
-            right - width * 0.15f,
-            top + height * 0.2f,
+            centerX + xOffset - xSize, centerY + xSize,
+            centerX + xOffset + xSize, centerY - xSize,
             iconStrokePaint
         )
     }
 
+    /**
+     * Draw Material Icons shift icon (arrow_upward style)
+     * Simplified, reliable rendering
+     */
     private fun drawShiftIcon(canvas: Canvas, bounds: RectF) {
+        val d = density
+        val iconColor = KeyboardDesignSystem.Colors.SPECIAL_KEY_ICON_DYNAMIC
+        
         iconStrokePaint.style = Paint.Style.STROKE
-        iconStrokePaint.strokeWidth = bounds.height() * 0.06f
-        iconStrokePaint.color = DeshDesignSystem.Colors.KEY_TEXT
+        iconStrokePaint.strokeWidth = 3.5f * d
+        iconStrokePaint.strokeCap = Paint.Cap.ROUND
+        iconStrokePaint.strokeJoin = Paint.Join.ROUND
+        iconStrokePaint.color = iconColor
 
-        val arrowHeight = bounds.height() * 0.42f
-        val arrowWidth = bounds.width() * 0.3f
+        val size = min(bounds.width(), bounds.height()) * 0.5f
         val centerX = bounds.centerX()
-        val baseY = bounds.centerY() + arrowHeight * 0.35f
+        val centerY = bounds.centerY()
+        val halfSize = size * 0.5f
 
+        // Upward arrow - simplified coordinates
         val path = Path().apply {
-            moveTo(centerX, baseY - arrowHeight)
-            lineTo(centerX - arrowWidth, baseY - arrowHeight * 0.35f)
-            lineTo(centerX - arrowWidth, baseY)
-            lineTo(centerX + arrowWidth, baseY)
-            lineTo(centerX + arrowWidth, baseY - arrowHeight * 0.35f)
-            close()
+            // Arrow head (pointing up)
+            moveTo(centerX, centerY - halfSize * 0.5f)
+            lineTo(centerX - halfSize * 0.4f, centerY + halfSize * 0.1f)
+            
+            moveTo(centerX, centerY - halfSize * 0.5f)
+            lineTo(centerX + halfSize * 0.4f, centerY + halfSize * 0.1f)
+
+            // Arrow shaft (vertical line)
+            moveTo(centerX, centerY - halfSize * 0.3f)
+            lineTo(centerX, centerY + halfSize * 0.5f)
         }
-
         canvas.drawPath(path, iconStrokePaint)
+    }
 
-        val rectHeight = arrowHeight * 0.35f
-        canvas.drawRoundRect(
-            RectF(
-                centerX - arrowWidth * 0.7f,
-                baseY,
-                centerX + arrowWidth * 0.7f,
-                baseY + rectHeight
-            ),
-            rectHeight * 0.35f,
-            rectHeight * 0.35f,
+    /**
+     * Draw Material Icons globe/language icon (language style)
+     * Simplified, reliable rendering
+     */
+    private fun drawLanguageIcon(canvas: Canvas, bounds: RectF) {
+        val d = density
+        val iconColor = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+        
+        iconStrokePaint.style = Paint.Style.STROKE
+        iconStrokePaint.strokeWidth = 3.5f * d
+        iconStrokePaint.strokeCap = Paint.Cap.ROUND
+        iconStrokePaint.strokeJoin = Paint.Join.ROUND
+        iconStrokePaint.color = iconColor
+
+        val size = min(bounds.width(), bounds.height()) * 0.5f
+        val centerX = bounds.centerX()
+        val centerY = bounds.centerY()
+        val radius = size * 0.4f
+
+        // Draw main circle (globe outline)
+        canvas.drawCircle(centerX, centerY, radius, iconStrokePaint)
+
+        // Draw horizontal line (equator)
+        canvas.drawLine(
+            centerX - radius * 0.95f, centerY,
+            centerX + radius * 0.95f, centerY,
             iconStrokePaint
         )
+
+        // Draw vertical meridian arc
+        val meridianPath = Path().apply {
+            addArc(
+                RectF(
+                    centerX - radius * 0.5f, centerY - radius,
+                    centerX + radius * 0.5f, centerY + radius
+                ),
+                -90f, 180f
+            )
+        }
+        canvas.drawPath(meridianPath, iconStrokePaint)
+    }
+
+    /**
+     * Draw Material Icons emoji icon (mood style)
+     * Simplified, reliable rendering
+     */
+    private fun drawEmojiIcon(canvas: Canvas, bounds: RectF) {
+        val d = density
+        val iconColor = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+        val eyeColor = KeyboardDesignSystem.Colors.EMOJI_EYES_DYNAMIC
+        
+        val size = min(bounds.width(), bounds.height()) * 0.5f
+        val centerX = bounds.centerX()
+        val centerY = bounds.centerY()
+        val faceRadius = size * 0.4f
+
+        // Draw face circle outline
+        iconStrokePaint.style = Paint.Style.STROKE
+        iconStrokePaint.strokeWidth = 3.5f * d
+        iconStrokePaint.strokeCap = Paint.Cap.ROUND
+        iconStrokePaint.color = iconColor
+        canvas.drawCircle(centerX, centerY, faceRadius, iconStrokePaint)
+
+        // Draw eyes (filled circles)
+        val eyePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = eyeColor
+        }
+        val eyeRadius = faceRadius * 0.2f
+        val eyeOffsetX = faceRadius * 0.35f
+        val eyeOffsetY = faceRadius * 0.2f
+
+        canvas.drawCircle(centerX - eyeOffsetX, centerY - eyeOffsetY, eyeRadius, eyePaint)
+        canvas.drawCircle(centerX + eyeOffsetX, centerY - eyeOffsetY, eyeRadius, eyePaint)
+
+        // Draw smile (arc)
+        val smilePath = Path().apply {
+            addArc(
+                RectF(
+                    centerX - faceRadius * 0.55f,
+                    centerY - faceRadius * 0.05f,
+                    centerX + faceRadius * 0.55f,
+                    centerY + faceRadius * 0.7f
+                ),
+                0f, 180f
+            )
+        }
+        canvas.drawPath(smilePath, iconStrokePaint)
     }
 
     /**
@@ -493,25 +928,24 @@ class KeyboardView @JvmOverloads constructor(
         val rowCount = rows.size.coerceAtLeast(4) // At least 4 rows
         val density = resources.displayMetrics.density
 
-        // Get responsive key height from Desh design system
-        val keyHeightDp = DeshDesignSystem.getKeyHeight(context)
-        val keyHeightPx = keyHeightDp * density
+        // Compact chip-style key height (from screenshot - smaller keys), scaled by heightPercentage
+        val keyHeightDp = KeyboardDesignSystem.Dimensions.KEY_HEIGHT_COMPACT  // 42dp for compact chips
+        val keyHeightPx = (keyHeightDp * density * heightPercentage / 100f)
 
-        // Get responsive spacing
-        val (_, verticalSpacing) = DeshDesignSystem.getKeySpacing(context)
-        val verticalSpacingPx = verticalSpacing * density
+        // Chip-style spacing, scaled by heightPercentage
+        val verticalSpacingPx = (KeyboardDesignSystem.Dimensions.ROW_VERTICAL_GAP * density * heightPercentage / 100f)
 
-        // Get responsive padding
-        val padding = DeshDesignSystem.getKeyboardPadding(context)
-        val paddingTopPx = padding.top * density
-        val paddingBottomPx = padding.bottom * density
+        // Minimal padding - no top padding, only bottom for gesture nav
+        val padding = KeyboardDesignSystem.getKeyboardPadding(context)
+        val paddingTopPx = padding.top  // 0dp - no top padding
+        val paddingBottomPx = padding.bottom
 
-        // Calculate total height
+        // Calculate total height (compact chip-style)
         val totalSpacing = (rowCount - 1) * verticalSpacingPx
         var desiredHeight = ((rowCount * keyHeightPx) + totalSpacing + paddingTopPx + paddingBottomPx).toInt()
 
         // Apply maximum height constraint to prevent keyboard from being too tall
-        val maxKeyboardHeightRatio = DeshDesignSystem.getMaxKeyboardHeightRatio(context)
+        val maxKeyboardHeightRatio = KeyboardDesignSystem.getMaxKeyboardHeightRatio(context)
         val screenHeight = resources.displayMetrics.heightPixels
         val maxKeyboardHeight = (screenHeight * maxKeyboardHeightRatio).toInt()
 
@@ -524,6 +958,9 @@ class KeyboardView @JvmOverloads constructor(
         if (maxHeight > 0 && desiredHeight > maxHeight) {
             desiredHeight = maxHeight
         }
+
+        // Note: Height percentage is already applied to keyHeightPx and verticalSpacingPx above
+        // Do NOT apply it again here or it will cause double scaling
 
         setMeasuredDimension(desiredWidth, desiredHeight)
     }
@@ -557,6 +994,8 @@ class KeyboardView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
+        canvas.drawColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
+
         // Draw ripple effect (if active)
         if (rippleRadius > 0) {
             canvas.drawCircle(rippleX, rippleY, rippleRadius, ripplePaint)
@@ -569,116 +1008,114 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Draw a single key
+     * Draw a single key - Material You Design
      *
      * @param canvas The canvas to draw on
      * @param keyBound The key and its bounds
      *
-     * Desh Kannada Keyboard design system:
-     * - Border radius: 6px (per design system)
-     * - Shadow: 0 1px 2px rgba(0,0,0,0.1)
-     * - Theme colors for different states
-     * - Selected state support
-     * - Optional borders (#E0E0E0)
-     * - Clean, minimal appearance
+     * Material You keyboard design:
+     * - 8dp corner radius (smooth, modern)
+     * - Tonal elevation instead of shadows
+     * - Surface tints for depth
+     * - No borders (clean appearance)
+     * - Proper contrast ratios (WCAG AA)
+     * - Clean, minimal Material You aesthetic
      */
     private fun drawKey(canvas: Canvas, keyBound: KeyBound) {
         val key = keyBound.key
         val bounds = keyBound.bounds
 
-        // Create inset bounds to account for spacing (visual gap between keys)
-        // Small inset for tight spacing like Desh
-        val insetAmount = 1.5f * resources.displayMetrics.density // Tight spacing like Desh
-
-        // Apply scale animation if this key is being animated
-        val scale = if (key == animatingKey) keyPressScale else 1.0f
-        val scaledInset = if (key == animatingKey) {
-            val scaleOffset = (1.0f - scale) * bounds.width() / 2f
-            insetAmount + scaleOffset
-        } else {
-            insetAmount
-        }
-
+        // Subtle inset to create gutters between keycaps
+        val inset = KeyboardDesignSystem.Dimensions.KEY_INSET * density
         val drawBounds = RectF(
-            bounds.left + scaledInset,
-            bounds.top + scaledInset,
-            bounds.right - scaledInset,
-            bounds.bottom - scaledInset
+            bounds.left + inset,
+            bounds.top + inset,
+            bounds.right - inset,
+            bounds.bottom - inset
         )
 
-        // Choose paint based on key type and state
-        val isActionKey = key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER
-        val isSpecialKey = key.type in specialKeyTypes
-        val backgroundPaint = when {
-            isActionKey && key == pressedKey -> actionKeyPressedPaint
-            isActionKey -> actionKeyPaint
-            isSpecialKey && key == pressedKey -> specialKeyPressedPaint
-            isSpecialKey || key == selectedKey -> specialKeyPaint
-            key == pressedKey -> keyPressedPaint
-            else -> keyBackgroundPaint
+        val scale = if (key == animatingKey) keyPressScale else 1f
+        if (scale != 1f) {
+            val dx = drawBounds.width() * (1 - scale) / 2f
+            val dy = drawBounds.height() * (1 - scale) / 2f
+            drawBounds.inset(dx, dy)
         }
 
-        // Get corner radius from theme (convert dp to pixels)
-        val cornerRadius = theme.shape.keyCornerRadius * resources.displayMetrics.density
+        val cornerRadius = KeyboardDesignSystem.Dimensions.KEY_CORNER_RADIUS * density  // Use chip-style radius
+        val isActionKey = key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER
+        val isUtilityKey = key.type in specialKeyTypes
+        val isSpaceKey = key.type == com.kannada.kavi.core.layout.models.KeyType.SPACE
 
-        // Draw shadow for depth (Desh design system)
-        if (key != pressedKey && theme.shape.borderEnabled) {
-            // Draw subtle shadow only when not pressed
-            val shadowOffset = DeshDesignSystem.Dimensions.KEY_SHADOW_DY * resources.displayMetrics.density
+        val backgroundPaint = when {
+            isActionKey -> if (key == pressedKey) actionKeyPressedPaint else actionKeyPaint
+            isUtilityKey -> if (key == pressedKey) specialKeyPressedPaint else specialKeyPaint
+            isSpaceKey -> keyBackgroundPaint  // Spacebar is white (not light beige) from screenshot
+            else -> if (key == pressedKey) keyPressedPaint else keyBackgroundPaint
+        }
+
+        // Draw subtle elevation shadow (only if not pressed)
+        if (key != pressedKey && key != animatingKey) {
+            val shadowOffsetY = 0.3f * density  // 0.3dp vertical offset for very subtle elevation
+            val shadowBlur = 0.5f * density  // Minimal blur effect
+            val shadowOpacity = 0.05f  // 5% opacity for very subtle shadow
+            
+            keyShadowPaint.color = ColorUtils.setAlphaComponent(0xFF000000.toInt(), (255 * shadowOpacity).toInt())
+            keyShadowPaint.style = Paint.Style.FILL
+            
+            // Draw shadow slightly offset below (very subtle elevation effect)
             val shadowBounds = RectF(
                 drawBounds.left,
-                drawBounds.top + shadowOffset,
+                drawBounds.top + shadowOffsetY,
                 drawBounds.right,
-                drawBounds.bottom + shadowOffset
+                drawBounds.bottom + shadowOffsetY + shadowBlur
             )
-            // Use Desh shadow color
-            keyShadowPaint.color = DeshDesignSystem.Colors.KEY_SHADOW
+            
+            // Draw shadow with rounded corners (very subtle elevation effect)
             canvas.drawRoundRect(shadowBounds, cornerRadius, cornerRadius, keyShadowPaint)
         }
-
-        // Draw key background (rounded rectangle)
+        
+        // Keycap (chip-style rounded rectangle)
         canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, backgroundPaint)
 
-        // Draw key border (if enabled in theme)
-        if (theme.shape.borderEnabled) {
-            // Use selected border color if key is selected
-            if (key == selectedKey) {
-                val selectedBorderPaint = Paint(keyBorderPaint).apply {
-                    color = theme.colors.keySelectedBorder
-                }
-                canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, selectedBorderPaint)
-            } else {
-                canvas.drawRoundRect(drawBounds, cornerRadius, cornerRadius, keyBorderPaint)
-            }
+        // Optional hint (e.g., numeric hint on top row) - top-left corner, small gray text
+        key.hint?.takeIf { it.isNotBlank() }?.let { hint ->
+            // Position hint in top-left corner (from screenshot)
+            // Use drawBounds (after inset) for proper positioning
+            val hintOffsetX = KeyboardDesignSystem.Dimensions.HINT_OFFSET_LEFT * density
+            val hintOffsetY = KeyboardDesignSystem.Dimensions.HINT_OFFSET_TOP * density
+            // Calculate text baseline position
+            val hintY = drawBounds.top + hintOffsetY + hintPaint.textSize - hintPaint.descent()
+            canvas.drawText(hint, drawBounds.left + hintOffsetX, hintY, hintPaint)
         }
 
-        // Draw icon or label
-        val displayLabel = when {
-            key.type == com.kannada.kavi.core.layout.models.KeyType.SPACE && key.label.isBlank() -> "Desh Keyboard"
-            else -> key.label
+        var displayLabel = key.label
+        if (isSpaceKey && displayLabel.isBlank()) {
+            // Show layout name on spacebar if available, otherwise show empty
+            displayLabel = currentLayoutName
         }
 
         val iconDrawn = drawCustomIcon(canvas, key, drawBounds)
 
         if (!iconDrawn && displayLabel.isNotEmpty()) {
-            // Calculate text position (center of key using drawBounds for accurate centering)
-            val textX = drawBounds.centerX()
-            val textY = drawBounds.centerY() - ((labelPaint.descent() + labelPaint.ascent()) / 2)
-
-            // Desh design system: 18px text size for keys
-            val optimalTextSize = (bounds.height() * 0.43f).coerceAtMost(
-                theme.typography.buttonSize * resources.displayMetrics.scaledDensity
-            )
-            labelPaint.textSize = optimalTextSize
-
-            // Set text color based on key type and state
-            labelPaint.color = if (key.type == com.kannada.kavi.core.layout.models.KeyType.ENTER) {
-                DeshDesignSystem.Colors.ACTION_KEY_TEXT
-            } else {
-                DeshDesignSystem.Colors.KEY_TEXT
+            val targetPaint = if (isSpaceKey) spaceBarPaint else labelPaint
+            targetPaint.color = when {
+                isActionKey -> KeyboardDesignSystem.Colors.ACTION_KEY_TEXT_DYNAMIC  // Dynamic text on action key
+                isUtilityKey -> KeyboardDesignSystem.Colors.SPECIAL_KEY_TEXT_DYNAMIC  // Dynamic text on special keys
+                else -> KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC  // Dynamic text on regular keys
             }
 
-            canvas.drawText(displayLabel, textX, textY, labelPaint)
+            if (!isSpaceKey) {
+                // Use text size from design system
+                val optimalTextSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.KEY_LABEL)
+                labelPaint.textSize = optimalTextSize
+                // Center text vertically (adjust slightly if hint is present)
+                val hintOffset = if (!key.hint.isNullOrBlank()) hintPaint.textSize * 0.2f else 0f
+                val textY = drawBounds.centerY() + hintOffset - ((labelPaint.descent() + labelPaint.ascent()) / 2)
+                canvas.drawText(displayLabel, drawBounds.centerX(), textY, labelPaint)
+            } else {
+                val textY = drawBounds.centerY() - ((spaceBarPaint.descent() + spaceBarPaint.ascent()) / 2)
+                canvas.drawText(displayLabel, drawBounds.centerX(), textY, spaceBarPaint)
+            }
         }
     }
 
@@ -695,6 +1132,15 @@ class KeyboardView @JvmOverloads constructor(
      * @return true if we handled the event
      */
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // If swipe typing is enabled, delegate to swipe gesture detector
+        if (isSwipeTypingEnabled && swipeGestureDetector != null) {
+            val handled = swipeGestureDetector?.onTouchEvent(event) ?: false
+            if (handled) {
+                return true
+            }
+        }
+
+        // Fall back to standard touch handling
         when (event.action) {
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -711,7 +1157,8 @@ class KeyboardView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                // User is moving finger (for swipe typing in future)
+                // Track movement for cancelling long press when sliding away
+                handleTouchMove(event.x, event.y)
                 return true
             }
 
@@ -735,6 +1182,7 @@ class KeyboardView @JvmOverloads constructor(
      * - Theme-based haptic feedback intensity
      */
     private fun handleTouchDown(x: Float, y: Float) {
+        cancelLongPressDetection()
         val key = findKeyAt(x, y)
 
         if (key != null) {
@@ -749,13 +1197,22 @@ class KeyboardView @JvmOverloads constructor(
 
             invalidate() // Redraw to show pressed state
 
-            // Vibrate (if enabled in theme)
-            if (theme.interaction.vibrationEnabled) {
-                performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-            }
+            // Vibrate
+            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
 
             // Play sound (if enabled in theme)
             // TODO: implement sound effects based on theme.interaction.soundEnabled
+
+            if (!key.key.longPressKeys.isNullOrEmpty()) {
+                scheduleLongPress(key)
+            }
+        }
+    }
+
+    private fun handleTouchMove(x: Float, y: Float) {
+        val key = findKeyAt(x, y)
+        if (key == null || key.key != pressedKey) {
+            cancelLongPressDetection()
         }
     }
 
@@ -772,8 +1229,8 @@ class KeyboardView @JvmOverloads constructor(
         keyPressScale = 1.0f
 
         // Create scale down animation
-        keyPressAnimator = ValueAnimator.ofFloat(1.0f, DeshDesignSystem.Animations.KEY_PRESS_SCALE).apply {
-            duration = DeshDesignSystem.Animations.KEY_PRESS_DURATION
+        keyPressAnimator = ValueAnimator.ofFloat(1.0f, KeyboardDesignSystem.Animations.KEY_PRESS_SCALE).apply {
+            duration = KeyboardDesignSystem.Animations.KEY_PRESS_DURATION
             interpolator = DecelerateInterpolator()
 
             addUpdateListener { animator ->
@@ -795,7 +1252,7 @@ class KeyboardView @JvmOverloads constructor(
      */
     private fun animateKeyRelease() {
         keyPressAnimator = ValueAnimator.ofFloat(keyPressScale, 1.0f).apply {
-            duration = DeshDesignSystem.Animations.KEY_RELEASE_DURATION
+            duration = KeyboardDesignSystem.Animations.KEY_RELEASE_DURATION
             interpolator = DecelerateInterpolator()
 
             addUpdateListener { animator ->
@@ -834,7 +1291,7 @@ class KeyboardView @JvmOverloads constructor(
 
         // Create ripple animator
         rippleAnimator = ValueAnimator.ofFloat(0f, maxRadius).apply {
-            duration = theme.interaction.rippleDuration
+            duration = KeyboardDesignSystem.Animations.RIPPLE_DURATION
             interpolator = DecelerateInterpolator()
 
             addUpdateListener { animator ->
@@ -852,15 +1309,25 @@ class KeyboardView @JvmOverloads constructor(
      * Send the key press to listener and clear visual feedback
      */
     private fun handleTouchUp(x: Float, y: Float) {
+        cancelLongPressDetection()
         val key = findKeyAt(x, y)
+        val popupVisible = longPressPopup != null
 
-        // Only trigger if finger lifted on the same key it pressed
-        if (key != null && key.key == pressedKey) {
+        // Only trigger if finger lifted on the same key it pressed and no popup stole the event
+        if (!popupVisible && key != null && key.key == pressedKey) {
             // Notify listener
             keyPressListener?.invoke(key.key)
         }
 
-        clearPressedKey()
+        if (popupVisible) {
+            pressedKey = null
+            pressedKeyBounds = null
+            rippleAnimator?.cancel()
+            rippleRadius = 0f
+            invalidate()
+        } else {
+            clearPressedKey()
+        }
     }
 
     /**
@@ -868,15 +1335,128 @@ class KeyboardView @JvmOverloads constructor(
      *
      * Also clears ripple animation.
      */
-    private fun clearPressedKey() {
+    private fun clearPressedKey(dismissPopup: Boolean = true) {
         pressedKey = null
         pressedKeyBounds = null
+        cancelLongPressDetection()
+
+        if (dismissPopup) {
+            dismissLongPressPopup()
+        }
 
         // Clear ripple
         rippleAnimator?.cancel()
         rippleRadius = 0f
 
         invalidate() // Redraw to clear pressed state
+    }
+
+    private fun scheduleLongPress(targetKey: KeyBound) {
+        cancelLongPressDetection()
+        if (targetKey.key.longPressKeys.isNullOrEmpty()) return
+
+        longPressTarget = targetKey
+        val runnable = Runnable {
+            showLongPressPopup(targetKey)
+        }
+        longPressRunnable = runnable
+        longPressHandler.postDelayed(runnable, LONG_PRESS_TIMEOUT_MS)
+    }
+
+    private fun cancelLongPressDetection() {
+        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+        longPressRunnable = null
+        longPressTarget = null
+    }
+
+    private fun showLongPressPopup(targetKey: KeyBound) {
+        val alternatives = targetKey.key.longPressKeys ?: return
+        if (alternatives.isEmpty()) return
+
+        dismissLongPressPopup()
+
+        val popupPadding = (LONG_PRESS_POPUP_PADDING_DP * density).toInt()
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(popupPadding, popupPadding / 2, popupPadding, popupPadding / 2)
+            background = GradientDrawable().apply {
+                cornerRadius = KeyboardDesignSystem.Dimensions.KEY_CORNER_RADIUS * density
+                setColor(KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC)
+            }
+        }
+
+        val optionMargin = (LONG_PRESS_OPTION_MARGIN_DP * density).toInt()
+
+        alternatives.forEachIndexed { index, option ->
+            val optionView = createLongPressOptionView(option, targetKey.key)
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            if (index > 0) {
+                params.leftMargin = optionMargin
+            }
+            optionView.layoutParams = params
+            container.addView(optionView)
+        }
+
+        container.measure(
+            MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST),
+            MeasureSpec.makeMeasureSpec(height, MeasureSpec.AT_MOST)
+        )
+
+        val popup = PopupWindow(
+            container,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            isOutsideTouchable = true
+            setBackgroundDrawable(ColorDrawable(0x00000000))
+            setOnDismissListener {
+                longPressPopup = null
+                clearPressedKey(dismissPopup = false)
+            }
+        }
+
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        val popupWidth = container.measuredWidth
+        val popupHeight = container.measuredHeight
+        val popupX = (location[0] + targetKey.bounds.centerX() - popupWidth / 2).toInt()
+        val offsetY = (LONG_PRESS_POPUP_OFFSET_DP * density).toInt()
+        val popupY = (location[1] + targetKey.bounds.top - popupHeight - offsetY).toInt()
+
+        popup.showAtLocation(this, Gravity.START or Gravity.TOP, popupX, popupY)
+        longPressPopup = popup
+    }
+
+    private fun createLongPressOptionView(option: String, parentKey: Key): TextView {
+        val horizontalPadding = (LONG_PRESS_OPTION_PADDING_DP * density).toInt()
+        val verticalPadding = (LONG_PRESS_OPTION_PADDING_DP * 0.6f * density).toInt()
+        return TextView(context).apply {
+            text = option
+            setTextColor(KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, KeyboardDesignSystem.Typography.KEY_LABEL_SIZE)
+            gravity = Gravity.CENTER
+            setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+            background = GradientDrawable().apply {
+                cornerRadius = KeyboardDesignSystem.Dimensions.KEY_CORNER_RADIUS * density
+                setColor(KeyboardDesignSystem.Colors.KEY_BACKGROUND_DYNAMIC)
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val altKey = parentKey.copy(label = option, output = option, longPressKeys = null)
+                keyPressListener?.invoke(altKey)
+                dismissLongPressPopup()
+            }
+        }
+    }
+
+    private fun dismissLongPressPopup() {
+        longPressPopup?.dismiss()
+        longPressPopup = null
     }
 
     /**
@@ -887,8 +1467,20 @@ class KeyboardView @JvmOverloads constructor(
      * @return The key at that position, or null
      */
     private fun findKeyAt(x: Float, y: Float): KeyBound? {
+        // Material You Profile: Add 6dp touch padding for 48dp minimum touch targets
+        // Visual key is 42dp, touch area is 48dp (42 + 6dp padding)
+        val density = resources.displayMetrics.density
+        val touchPadding = KeyboardDesignSystem.Dimensions.TOUCH_PADDING_VERTICAL * density
+
         return keyBounds.find { keyBound ->
-            keyBound.bounds.contains(x, y)
+            // Expand bounds by touch padding for better accessibility
+            val expandedBounds = RectF(
+                keyBound.bounds.left,
+                keyBound.bounds.top - touchPadding,
+                keyBound.bounds.right,
+                keyBound.bounds.bottom + touchPadding
+            )
+            expandedBounds.contains(x, y)
         }
     }
 
@@ -899,4 +1491,10 @@ class KeyboardView @JvmOverloads constructor(
         val key: Key,
         val bounds: RectF
     )
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        cancelLongPressDetection()
+        dismissLongPressPopup()
+    }
 }
