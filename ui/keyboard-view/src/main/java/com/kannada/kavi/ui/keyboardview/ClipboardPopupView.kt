@@ -8,7 +8,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.kannada.kavi.features.clipboard.models.ClipboardItem
-import com.kannada.kavi.features.themes.KeyboardTheme
+// Design system removed
 import kotlin.math.max
 import kotlin.math.min
 
@@ -63,7 +63,9 @@ class ClipboardPopupView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     // Clipboard items to display
-    private var items: List<ClipboardItem> = emptyList()
+    private var allItems: List<ClipboardItem> = emptyList()
+    private var filteredItems: List<ClipboardItem> = emptyList()
+    private var searchQuery: String = ""
 
     // Scroll position
     private var scrollY = 0f
@@ -72,6 +74,8 @@ class ClipboardPopupView @JvmOverloads constructor(
     // Touch tracking
     private var lastTouchY = 0f
     private var isScrolling = false
+    private var lastTapTime = 0L
+    private var lastTapItem: ClipboardItem? = null
 
     // Item bounds for touch detection
     private val itemBounds = mutableListOf<ItemBound>()
@@ -79,16 +83,28 @@ class ClipboardPopupView @JvmOverloads constructor(
     // Pressed item
     private var pressedItem: ClipboardItem? = null
 
+    // Search bar bounds
+    private var searchBarBounds = RectF()
+    private var clearSearchBounds = RectF()
+    private var isSearchFocused = false
+
+    // Category filter
+    private var activeCategory: ClipboardCategory = ClipboardCategory.ALL
+    private val categoryBounds = mutableMapOf<ClipboardCategory, RectF>()
+
     // Listeners
     private var onItemClickListener: ((ClipboardItem) -> Unit)? = null
     private var onCloseListener: (() -> Unit)? = null
     private var onPinToggleListener: ((ClipboardItem) -> Unit)? = null
     private var onDeleteListener: ((ClipboardItem) -> Unit)? = null
+    private var onSearchListener: ((String) -> Unit)? = null
 
-    // Theme (Material You design system)
-    private var theme: KeyboardTheme = KeyboardTheme.defaultLight()
+    // Simple colors (design system removed)
+    private val BACKGROUND_COLOR = 0xFFFFFFFF.toInt()
+    private val TEXT_COLOR = 0xFF191C1C.toInt()
+    private val SECONDARY_TEXT_COLOR = 0xFF757575.toInt()
 
-    // Paint objects (configured by theme)
+    // Paint objects
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
@@ -126,63 +142,56 @@ class ClipboardPopupView @JvmOverloads constructor(
     private var dividerHeight = 2f
 
     init {
-        // Apply default theme
-        applyTheme(theme)
+        // Apply default colors
+        applyColors()
     }
 
     /**
-     * Set Material You theme
-     *
-     * @param theme KeyboardTheme to apply
+     * Set theme (no-op - design system removed)
      */
-    fun setTheme(theme: KeyboardTheme) {
-        this.theme = theme
-        applyTheme(theme)
+    fun setTheme(theme: Any) {
+        // Design system removed - using hardcoded values
+        applyColors()
         invalidate()
     }
 
     /**
-     * Apply theme to all Paint objects
-     *
-     * Material You styling for clipboard popup:
-     * - Background: #F5F5F5 (from design system)
-     * - Cards: #FFFFFF with 12dp corners
-     * - Border: #E0E0E0
+     * Apply colors to all Paint objects
      */
-    private fun applyTheme(theme: KeyboardTheme) {
+    private fun applyColors() {
         val density = resources.displayMetrics.density
 
         // Apply colors
-        backgroundPaint.color = theme.colors.clipboardBackground
-        headerPaint.color = theme.colors.primary
-        itemBackgroundPaint.color = theme.colors.clipboardCard
-        pressedItemPaint.color = theme.colors.keyPressed
-        dividerPaint.color = theme.colors.clipboardBorder
+        backgroundPaint.color = BACKGROUND_COLOR
+        headerPaint.color = 0xFF006C5F.toInt()  // Teal
+        itemBackgroundPaint.color = BACKGROUND_COLOR
+        pressedItemPaint.color = 0xFFE8F5F3.toInt()  // Light teal
+        dividerPaint.color = 0xFFE0E0E0.toInt()
 
         // Apply typography
         textPaint.apply {
-            textSize = theme.typography.bodySize * density
-            color = theme.colors.onSurface
+            textSize = 14f * density
+            color = TEXT_COLOR
         }
 
         headerTextPaint.apply {
-            textSize = theme.typography.headingSize * density
-            color = theme.colors.onPrimary
+            textSize = 16f * density
+            color = 0xFFFFFFFF.toInt()
             isFakeBoldText = true
         }
 
         timestampPaint.apply {
-            textSize = theme.typography.captionSize * density
-            color = theme.colors.onSurfaceVariant
+            textSize = 12f * density
+            color = SECONDARY_TEXT_COLOR
         }
 
         iconPaint.apply {
-            textSize = theme.typography.headingSize * density
-            color = theme.colors.primary
+            textSize = 16f * density
+            color = 0xFF006C5F.toInt()
         }
 
         // Apply spacing
-        itemPadding = theme.spacing.containerPadding * density * 2
+        itemPadding = 16f * density * 2
         dividerHeight = 1f * density
     }
 
@@ -192,10 +201,54 @@ class ClipboardPopupView @JvmOverloads constructor(
      * @param items List of clipboard items
      */
     fun setItems(items: List<ClipboardItem>) {
-        this.items = items
+        this.allItems = items
+        applyFilters()
         scrollY = 0f
         calculateBounds()
         invalidate()
+    }
+
+    /**
+     * Set search query
+     */
+    fun setSearchQuery(query: String) {
+        searchQuery = query
+        applyFilters()
+        calculateBounds()
+        invalidate()
+    }
+
+    /**
+     * Set category filter
+     */
+    fun setCategory(category: ClipboardCategory) {
+        activeCategory = category
+        applyFilters()
+        calculateBounds()
+        invalidate()
+    }
+
+    /**
+     * Apply search and category filters
+     */
+    private fun applyFilters() {
+        var items = allItems
+
+        // Apply category filter
+        items = when (activeCategory) {
+            ClipboardCategory.ALL -> items
+            ClipboardCategory.PINNED -> items.filter { it.isPinned }
+            ClipboardCategory.TEXT -> items.filter { it.contentType == com.kannada.kavi.core.common.ClipboardContentType.TEXT }
+            ClipboardCategory.LINKS -> items.filter { it.contentType == com.kannada.kavi.core.common.ClipboardContentType.URL }
+            ClipboardCategory.CODE -> items.filter { it.contentType == com.kannada.kavi.core.common.ClipboardContentType.CODE }
+        }
+
+        // Apply search filter
+        if (searchQuery.isNotBlank()) {
+            items = items.filter { it.matchesSearch(searchQuery) }
+        }
+
+        filteredItems = items
     }
 
     /**
@@ -242,7 +295,7 @@ class ClipboardPopupView @JvmOverloads constructor(
 
         var currentY = headerHeight - scrollY
 
-        items.forEach { item ->
+        filteredItems.forEach { item ->
             val bounds = RectF(
                 0f,
                 currentY,
@@ -255,7 +308,7 @@ class ClipboardPopupView @JvmOverloads constructor(
         }
 
         // Calculate max scroll
-        val totalHeight = headerHeight + (items.size * (itemHeight + dividerHeight))
+        val totalHeight = headerHeight + (filteredItems.size * (itemHeight + dividerHeight))
         maxScrollY = max(0f, totalHeight - height)
     }
 
@@ -308,7 +361,7 @@ class ClipboardPopupView @JvmOverloads constructor(
         canvas.restore()
 
         // Draw empty state if no items
-        if (items.isEmpty()) {
+        if (filteredItems.isEmpty()) {
             drawEmptyState(canvas)
         }
     }
@@ -489,6 +542,17 @@ class ClipboardPopupView @JvmOverloads constructor(
         val item: ClipboardItem,
         val bounds: RectF
     )
+}
+
+/**
+ * ClipboardCategory - Filter categories
+ */
+enum class ClipboardCategory {
+    ALL,      // Show all items
+    PINNED,   // Show only pinned items
+    TEXT,     // Show only text items
+    LINKS,    // Show only URL items
+    CODE      // Show only code snippets
 }
 
 /**
