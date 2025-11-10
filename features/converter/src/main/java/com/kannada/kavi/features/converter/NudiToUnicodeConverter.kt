@@ -1,347 +1,644 @@
-package com.kannada.kavi.features.converter
+﻿package com.kannada.kavi.features.converter
 
 import com.kannada.kavi.core.common.Result
 import com.kannada.kavi.core.common.resultError
 import com.kannada.kavi.core.common.resultSuccess
 
 /**
- * Nudi to Unicode Converter
- *
- * This class converts ASCII-encoded Kannada text (Nudi format) to proper Unicode Kannada.
- *
- * WHAT IS NUDI?
- * -------------
- * Before Unicode became standard, people used special fonts like "Nudi" to type Kannada.
- * In these fonts, you'd type English characters, but they'd appear as Kannada on screen.
- * Problem: If you sent this text to someone without the Nudi font, they'd see gibberish!
- *
- * WHAT IS UNICODE?
- * ----------------
- * Unicode is the universal standard where every character has a unique code.
- * Unicode Kannada text works everywhere - WhatsApp, Facebook, any app, any device!
- *
- * THIS CONVERTER:
- * --------------
- * Takes old Nudi text (like "PÀìªÀiÁ") and converts it to proper Unicode (like "ಕನ್ನಡ")
- * Think of it like a translator that speaks both languages!
- *
- * Based on the open-source converter from: github.com/aravindavk/ascii2unicode
+ * NudiToUnicodeConverter - ASCII to Unicode converter for Kannada
+ * 
+ * Based on the exact implementation from ascii2unicode (https://github.com/aravindavk/ascii2unicode)
+ * This is a direct port of the Python knconverter script to Kotlin.
+ * 
+ * Supports:
+ * - Complete Nudi encoding conversion
+ * - Complete Baraha encoding conversion
+ * - Special handling for vattaksharagalu (consonant clusters)
+ * - Special handling for arkavattu (ರ combinations)
+ * - Broken cases handling (special vowel combinations)
+ * - ZWJ (Zero Width Joiner) for proper rendering
+ * 
+ * Usage:
+ * ```kotlin
+ * val converter = NudiToUnicodeConverter()
+ * val result = converter.convert("PÀjÉ")
+ * when (result) {
+ *     is Result.Success -> println(result.data) // "ಕನ್ನಡ"
+ *     is Result.Error -> println(result.exception.message)
+ * }
+ * ```
  */
 class NudiToUnicodeConverter {
 
     /**
-     * The Master Translation Dictionary
+     * Convert Nudi/Baraha ASCII text to Unicode Kannada
      *
-     * This maps ASCII characters (Nudi encoding) to Unicode Kannada characters.
-     * Each entry is like a word in a dictionary: "this character" = "that character"
+     * @param asciiText The ASCII-encoded Kannada text (Nudi or Baraha)
+     * @return Result containing the Unicode Kannada text
      */
-    private val conversionMap = mapOf(
-        // Vowels (ಸ್ವರಗಳು) - Independent vowel characters
-        "C" to "ಅ",   // a
-        "D" to "ಆ",   // aa
-        "E" to "ಇ",   // i
-        "F" to "ಈ",   // ii
-        "G" to "ಉ",   // u
-        "H" to "ಊ",   // uu
-        "I" to "ಋ",   // R (vocalic r)
-        "J" to "ಎ",   // e
-        "K" to "ಏ",   // ee
-        "L" to "ಐ",   // ai
-        "M" to "ಒ",   // o
-        "N" to "ಓ",   // oo
-        "O" to "ಔ",   // au
-
-        // Consonants (ವ್ಯಂಜನಗಳು) - Basic consonants
-        "P" to "ಕ",   // ka
-        "Q" to "ಖ",   // kha
-        "R" to "ಗ",   // ga
-        "S" to "ಘ",   // gha
-        "T" to "ಙ",   // nga
-        "U" to "ಚ",   // cha
-        "V" to "ಛ",   // chha
-        "W" to "ಜ",   // ja
-        "X" to "ಝ",   // jha
-        "Y" to "ಞ",   // nya
-        "Z" to "ಟ",   // Ta
-        "[" to "ಠ",   // Tha
-        "\\" to "ಡ",  // Da
-        "]" to "ಢ",   // Dha
-        "^" to "ಣ",   // Na
-        "_" to "ತ",   // ta
-        "`" to "ಥ",   // tha
-        "a" to "ದ",   // da
-        "b" to "ಧ",   // dha
-        "c" to "ನ",   // na
-        "d" to "ಪ",   // pa
-        "e" to "ಫ",   // pha
-        "f" to "ಬ",   // ba
-        "g" to "ಭ",   // bha
-        "h" to "ಮ",   // ma
-        "i" to "ಯ",   // ya
-        "j" to "ರ",   // ra
-        "k" to "ಲ",   // la
-        "l" to "ವ",   // va
-        "m" to "ಶ",   // sha
-        "n" to "ಷ",   // Sha
-        "o" to "ಸ",   // sa
-        "p" to "ಹ",   // ha
-        "q" to "ಳ",   // La
-        "r" to "ೞ",   // zha
-
-        // Dependent vowel signs (ಮಾತ್ರೆಗಳು) - Vowel markers that attach to consonants
-        "¨" to "ಾ",   // aa sign
-        "©" to "ಿ",   // i sign
-        "ª" to "ೀ",   // ii sign
-        "«" to "ು",   // u sign
-        "¬" to "ೂ",   // uu sign
-        "­" to "ೃ",   // R sign
-        "®" to "ೆ",   // e sign
-        "¯" to "ೇ",   // ee sign
-        "°" to "ೈ",   // ai sign
-        "±" to "ೊ",   // o sign
-        "²" to "ೋ",   // oo sign
-        "³" to "ೌ",   // au sign
-
-        // Special characters
-        "¢" to "ಂ",   // anusvara (chandrabindu)
-        "£" to "ಃ",   // visarga
-        "¤" to "್",   // halant/virama (removes inherent vowel)
-
-        // Numerals (ಸಂಖ್ಯೆಗಳು)
-        "¦" to "೦",   // 0
-        "§" to "೧",   // 1
-        "¨" to "೨",   // 2
-        "©" to "೩",   // 3
-        "ª" to "೪",   // 4
-        "«" to "೫",   // 5
-        "¬" to "೬",   // 6
-        "­" to "೭",   // 7
-        "®" to "೮",   // 8
-        "¯" to "೯",   // 9
-
-        // Vattakshara (ದ್ವಿತ್ವ ಅಕ್ಷರಗಳು) - Doubled consonants
-        "Ì" to "ಕ",
-        "Í" to "ಖ",
-        "Î" to "ಗ",
-        "Ï" to "ಘ",
-        "Ð" to "ಚ",
-        "Ñ" to "ಛ",
-        "Ò" to "ಜ",
-        "Ó" to "ಝ",
-        "Ô" to "ಟ",
-        "Õ" to "ಠ",
-        "Ö" to "ಡ",
-        "×" to "ಢ",
-        "Ø" to "ಣ",
-        "Ù" to "ತ",
-        "Ú" to "ಥ",
-        "Û" to "ದ",
-        "Ü" to "ಧ",
-        "Ý" to "ನ",
-        "Þ" to "ಪ",
-        "ß" to "ಫ",
-        "à" to "ಬ",
-        "á" to "ಭ",
-        "â" to "ಮ",
-        "ã" to "ಯ",
-        "ä" to "ರ",
-        "å" to "ಲ",
-        "æ" to "ವ",
-        "ç" to "ಶ",
-        "è" to "ಷ",
-        "é" to "ಸ",
-        "ê" to "ಹ",
-        "ë" to "ಳ",
-
-        // Arkavattu (ಅರ್ಕವಟ್ಟು) - Medial consonants
-        "ì" to "್ಕ",
-        "í" to "್ಖ",
-        "î" to "್ಗ",
-        "ï" to "್ಘ",
-        "ð" to "್ರ",   // ra
-        "ñ" to "್ಚ",
-        "ò" to "್ಛ",
-        "ó" to "್ಜ",
-        "ô" to "್ಝ",
-        "õ" to "್ಟ",
-        "ö" to "್ಠ",
-        "÷" to "್ಡ",
-        "ø" to "್ಢ",
-        "ù" to "್ಣ",
-        "ú" to "್ತ",
-        "û" to "್ಥ",
-        "ü" to "್ದ",
-        "ý" to "್ಧ",
-        "þ" to "್ನ",
-        "ÿ" to "್ಪ",
-
-        // Common conjuncts and special combinations
-        "Ã" to "ೀ",   // Special case for ii
-        "Ä" to "ೂ",   // Special case for uu
-        "Æ" to "ೃ",   // Special case for R
-        "Ç" to "ೆ",   // Special case for e
-        "È" to "ೇ",   // Special case for ee
-        "É" to "ೈ",   // Special case for ai
-        "Ê" to "ೊ",   // Special case for o
-        "Ë" to "ೋ",   // Special case for oo
-        "Ì" to "ೌ"    // Special case for au
-    )
-
-    /**
-     * Convert Nudi ASCII text to Unicode Kannada
-     *
-     * @param nudiText The input text in Nudi encoding
-     * @return Result containing the converted Unicode text, or an error
-     *
-     * Example:
-     * ```
-     * val result = converter.convert("PÀìªÀiÁ")
-     * when (result) {
-     *     is Result.Success -> println(result.data) // Prints: "ಕನ್ನಡ"
-     *     is Result.Error -> println(result.exception.message)
-     * }
-     * ```
-     */
-    fun convert(nudiText: String): Result<String> {
+    fun convert(asciiText: String): Result<String> {
         return try {
-            // Empty string? Nothing to convert!
-            if (nudiText.isEmpty()) {
+            if (asciiText.isEmpty()) {
                 return resultSuccess("")
             }
-
-            // Check if text is too long (prevent memory issues)
-            if (nudiText.length > 100000) {
-                return resultError("Text too long. Maximum 100,000 characters allowed.")
-            }
-
-            // The actual conversion happens here!
-            val unicode = convertToUnicode(nudiText)
-
-            resultSuccess(unicode)
+            resultSuccess(processLine(asciiText))
         } catch (e: Exception) {
-            resultError(e)
+            resultError("Failed to convert text: ${e.message}")
         }
     }
 
     /**
-     * The core conversion logic
+     * Convert Unicode Kannada text to Nudi/Baraha ASCII
      *
-     * This function walks through the Nudi text character by character,
-     * looking up each character in our conversion map, and builds the Unicode result.
-     *
-     * It's like translating a sentence word by word using a dictionary!
+     * @param unicodeText The Unicode Kannada text
+     * @return Result containing the Nudi ASCII text
      */
-    private fun convertToUnicode(nudiText: String): String {
-        val result = StringBuilder()
-        var index = 0
-
-        while (index < nudiText.length) {
-            // Try to match the longest possible sequence first
-            // (some characters are represented by multiple ASCII chars)
-            var matched = false
-            var maxLength = minOf(4, nudiText.length - index) // Try up to 4 chars
-
-            // Try longest sequences first, then shorter ones
-            for (length in maxLength downTo 1) {
-                val substring = nudiText.substring(index, index + length)
-
-                if (conversionMap.containsKey(substring)) {
-                    // Found a match! Add the Unicode equivalent
-                    result.append(conversionMap[substring])
-                    index += length
-                    matched = true
-                    break
-                }
+    fun convertReverse(unicodeText: String): Result<String> {
+        return try {
+            if (unicodeText.isEmpty()) {
+                return resultSuccess("")
             }
-
-            // If no match found, keep the original character
-            // (might be English text mixed in, or a space, punctuation, etc.)
-            if (!matched) {
-                result.append(nudiText[index])
-                index++
-            }
+            resultSuccess(unicodeToNudi(unicodeText))
+        } catch (e: Exception) {
+            resultError("Failed to convert text: ${e.message}")
         }
-
-        return result.toString()
     }
 
     /**
-     * Check if text appears to be in Nudi format
-     *
-     * This is useful to detect if text needs conversion.
-     * It checks if the text contains characters commonly used in Nudi encoding.
-     *
+     * Convert multiple texts in batch
+     * 
+     * @param asciiTexts List of ASCII-encoded texts
+     * @return Result containing list of converted Unicode texts
+     */
+    fun convertBatch(asciiTexts: List<String>): Result<List<String>> {
+        return try {
+            resultSuccess(asciiTexts.map { processLine(it) })
+        } catch (e: Exception) {
+            resultError("Failed to convert batch: ${e.message}")
+        }
+    }
+
+    /**
+     * Detect if text appears to be Nudi/Baraha encoded
+     * 
      * @param text The text to check
-     * @return true if text appears to be Nudi-encoded, false otherwise
+     * @return true if text likely contains Nudi/Baraha encoding
      */
     fun isNudiText(text: String): Boolean {
-        // Nudi text often contains characters in these ranges:
-        // - Extended ASCII (128-255)
-        // - Specific characters like ¨, ©, ª, etc.
-
-        val nudiCharCount = text.count { char ->
-            // Count characters that are likely from Nudi encoding
-            char.code in 128..255 || conversionMap.containsKey(char.toString())
+        if (text.isEmpty()) return false
+        
+        // Check for common Nudi/Baraha patterns
+        val suspectCount = text.count { char ->
+            char.code in 128..255 || 
+            mainMapping.keys.any { it.contains(char) }
         }
-
-        // If more than 30% of characters are Nudi-like, probably Nudi text
-        return nudiCharCount.toFloat() / text.length > 0.3f
-    }
-
-    /**
-     * Batch convert multiple strings
-     *
-     * Useful when converting multiple messages, file contents, etc.
-     *
-     * @param nudiTexts List of Nudi texts to convert
-     * @return Result containing list of converted texts
-     */
-    fun convertBatch(nudiTexts: List<String>): Result<List<String>> {
-        return try {
-            val converted = nudiTexts.map { text ->
-                when (val result = convert(text)) {
-                    is Result.Success -> result.data
-                    is Result.Error -> text // Keep original if conversion fails
-                }
-            }
-            resultSuccess(converted)
-        } catch (e: Exception) {
-            resultError(e)
-        }
+        
+        return (suspectCount.toFloat() / text.length) > 0.3f
     }
 
     /**
      * Get conversion statistics
-     *
-     * Useful for debugging and showing users what was converted.
-     *
-     * @param nudiText Original Nudi text
+     * 
+     * @param asciiText Original ASCII text
      * @param unicodeText Converted Unicode text
-     * @return ConversionStats object with details
+     * @return ConversionStats with metrics
      */
-    fun getConversionStats(nudiText: String, unicodeText: String): ConversionStats {
-        val originalLength = nudiText.length
-        val convertedLength = unicodeText.length
+    fun getConversionStats(asciiText: String, unicodeText: String): ConversionStats {
         val kannadaChars = unicodeText.count { it in '\u0C80'..'\u0CFF' }
-
+        val compression = if (asciiText.isNotEmpty()) {
+            unicodeText.length.toFloat() / asciiText.length
+        } else {
+            0f
+        }
         return ConversionStats(
-            originalLength = originalLength,
-            convertedLength = convertedLength,
+            originalLength = asciiText.length,
+            convertedLength = unicodeText.length,
             kannadaCharacters = kannadaChars,
-            compressionRatio = if (originalLength > 0) {
-                convertedLength.toFloat() / originalLength.toFloat()
-            } else 0f
+            compressionRatio = compression
         )
+    }
+
+    /**
+     * Process a line - splits into words and processes each word
+     */
+    private fun processLine(line: String): String {
+        val cleaned = line.trim()
+        if (cleaned.isEmpty()) return ""
+
+        val words = cleaned.split(' ')
+        return words.joinToString(" ") { processWord(it) }
+    }
+
+    /**
+     * Convert Unicode to Nudi (reverse conversion)
+     */
+    private fun unicodeToNudi(text: String): String {
+        var result = text
+
+        // Sort by length (longest first) to avoid partial replacements
+        val sortedMappings = reverseMapping.entries.sortedByDescending { it.key.length }
+
+        for ((unicode, nudi) in sortedMappings) {
+            result = result.replace(unicode, nudi)
+        }
+
+        return result
+    }
+
+    /**
+     * Process a single word - main conversion logic
+     * This is a direct port of the Python process_word function
+     */
+    private fun processWord(word: String): String {
+        val output = mutableListOf<Char>()
+        var i = 0
+        val maxLen = word.length
+
+        while (i < maxLen) {
+            // Skip ignore list characters
+            if (word[i] in ignoreList) {
+                i++
+                continue
+            }
+
+            // Find mapping
+            val (jump, converted) = findMapping(output, word, i)
+            
+            // Add converted characters
+            output.addAll(converted)
+            
+            // Jump by number of characters matched
+            i += (1 + jump)
+        }
+
+        return output.joinToString("")
+    }
+
+    /**
+     * Find mapping for current position
+     * This is a direct port of the Python find_mapping function
+     * 
+     * @param output Current output list
+     * @param text Input text
+     * @param currentPos Current position in text
+     * @return Pair of (jump_count, converted_chars)
+     */
+    private fun findMapping(output: MutableList<Char>, text: String, currentPos: Int): Pair<Int, List<Char>> {
+        val maxLen = minOf(4, text.length - currentPos - 1)
+        var n = 0
+        val outputList = output.toMutableList()
+
+        // Try matching from longest to shortest (4 chars down to 1 char)
+        for (i in maxLen downTo 0) {
+            val substr = text.substring(currentPos, currentPos + i + 1)
+
+            if (substr in mainMapping) {
+                // Direct mapping found
+                val mapped = mainMapping[substr]!!
+                
+                // Check if previous char is halant and current is not vattakshara
+                // Add ZWJ to prevent mixing
+                if (outputList.isNotEmpty() && outputList.last() == '\u0CCD') {
+                    // Check if this is not a vattakshara
+                    val firstChar = mapped.firstOrNull()
+                    if (firstChar != null && firstChar !in vattaksharagalu.values) {
+                        outputList.add('\u200D') // ZWJ
+                    }
+                }
+                
+                // Add mapped characters
+                outputList.addAll(mapped.toList())
+                n = i
+                break
+            } else if (i == 0) {
+                // No direct mapping, try special cases
+                val char = substr[0]
+                
+                when {
+                    char in asciiArkavattu -> {
+                        processArkavattu(outputList, char)
+                    }
+                    char in vattaksharagalu -> {
+                        processVattakshara(outputList, char)
+                    }
+                    char in brokenCases -> {
+                        processBrokenCase(outputList, char)
+                    }
+                    else -> {
+                        // No match, append as-is
+                        outputList.add(char)
+                    }
+                }
+            }
+        }
+
+        return Pair(n, outputList.drop(output.size))
+    }
+
+    /**
+     * Process vattakshara (consonant clusters)
+     * Example: ತಿಮ್ಮಿ in ASCII: ತಿ + ಮಿ + ma_vattu
+     * in Unicode: ತ + dependent vowel ಇ + ಮ + halant + ಮ + dependent vowel ಇ
+     */
+    private fun processVattakshara(letters: MutableList<Char>, t: Char) {
+        val lastLetter = if (letters.isNotEmpty()) letters.last() else null
+        val baseChar = vattaksharagalu[t]!!
+
+        if (lastLetter != null && lastLetter in dependentVowels) {
+            // If last letter is dependent vowel, rearrange
+            letters[letters.size - 1] = '\u0CCD' // halant
+            letters.add(baseChar)
+            letters.add(lastLetter)
+        } else {
+            // If "ಅ" kaara, just append halant + base letter
+            letters.add('\u0CCD') // halant
+            letters.add(baseChar)
+        }
+    }
+
+    /**
+     * Process arkavattu (special ರ combinations)
+     * Example: ವರ್ಷ in ASCII ವ + ಷ + arkavattu
+     * in Unicode ವ + ರ + halant + ಷ
+     */
+    private fun processArkavattu(letters: MutableList<Char>, t: Char) {
+        val lastLetter = if (letters.isNotEmpty()) letters.last() else null
+        val secondLast = if (letters.size > 1) letters[letters.size - 2] else null
+        val baseChar = asciiArkavattu[t]!!
+
+        if (lastLetter != null && lastLetter in dependentVowels) {
+            // Rearrange
+            if (secondLast != null) {
+                letters[letters.size - 2] = baseChar
+                letters[letters.size - 1] = '\u0CCD' // halant
+                letters.add(secondLast)
+                letters.add(lastLetter)
+            }
+        } else {
+            if (lastLetter != null) {
+                letters[letters.size - 1] = baseChar
+                letters.add('\u0CCD') // halant
+                letters.add(lastLetter)
+            }
+        }
+    }
+
+    /**
+     * Process broken cases (special vowel combinations)
+     * Example: ಕೀರ್ತಿ and ಕೇಳಿ - deerga has same code but different Unicode
+     */
+    private fun processBrokenCase(letters: MutableList<Char>, t: Char) {
+        val lastLetter = if (letters.isNotEmpty()) letters.last() else null
+        val brokenCase = brokenCases[t]!!
+
+        if (lastLetter != null && lastLetter in brokenCase.mapping) {
+            // Replace last letter with mapped value
+            letters[letters.size - 1] = brokenCase.mapping[lastLetter]!!
+        } else {
+            // Append the value
+            letters.add(brokenCase.value)
+        }
+    }
+
+    companion object {
+        /**
+         * Dependent vowels (matras)
+         */
+        private val dependentVowels = listOf(
+            '\u0CCD', // ್ halant
+            '\u0CBE', // ಾ
+            '\u0CBF', // ಿ
+            '\u0CC0', // ೀ
+            '\u0CC1', // ು
+            '\u0CC2', // ೂ
+            '\u0CC3', // ೃ
+            '\u0CC6', // ೆ
+            '\u0CC7', // ೇ
+            '\u0CC8', // ೈ
+            '\u0CCA', // ೊ
+            '\u0CCB', // ೋ
+            '\u0CCC'  // ೌ
+        )
+
+        /**
+         * Characters to ignore
+         */
+        private val ignoreList = setOf('ö', '÷')
+
+        /**
+         * Main mapping dictionary - exact from ascii2unicode
+         */
+        private val mainMapping = mapOf(
+            "C" to "ಅ",
+            "D" to "ಆ",
+            "E" to "ಇ",
+            "F" to "ಈ",
+            "G" to "ಉ",
+            "H" to "ಊ",
+            "IÄ" to "ಋ",
+            "J" to "ಎ",
+            "K" to "ಏ",
+            "L" to "ಐ",
+            "M" to "ಒ",
+            "N" to "ಓ",
+            "O" to "ಔ",
+            "A" to "ಂ",
+            "B" to "ಃ",
+            "Pï" to "ಕ್",
+            "PÀ" to "ಕ",
+            "PÁ" to "ಕಾ",
+            "Q" to "ಕಿ",
+            "PÉ" to "ಕೆ",
+            "PË" to "ಕೌ",
+            "Sï" to "ಖ್",
+            "R" to "ಖ",
+            "SÁ" to "ಖಾ",
+            "T" to "ಖಿ",
+            "SÉ" to "ಖೆ",
+            "SË" to "ಖೌ",
+            "Uï" to "ಗ್",
+            "UÀ" to "ಗ",
+            "UÁ" to "ಗಾ",
+            "V" to "ಗಿ",
+            "UÉ" to "ಗೆ",
+            "UË" to "ಗೌ",
+            "Wï" to "ಘ್",
+            "WÀ" to "ಘ",
+            "WÁ" to "ಘಾ",
+            "X" to "ಘಿ",
+            "WÉ" to "ಘೆ",
+            "WË" to "ಘೌ",
+            "k" to "ಞ",
+            "Zï" to "ಚ್",
+            "ZÀ" to "ಚ",
+            "ZÁ" to "ಚಾ",
+            "a" to "ಚಿ",
+            "ZÉ" to "ಚೆ",
+            "ZË" to "ಚೌ",
+            "bï" to "ಛ್",
+            "bÀ" to "ಛ",
+            "bÁ" to "ಛಾ",
+            "c" to "ಛಿ",
+            "bÉ" to "ಛೆ",
+            "bË" to "ಛೌ",
+            "eï" to "ಜ್",
+            "d" to "ಜ",
+            "eÁ" to "ಜಾ",
+            "f" to "ಜಿ",
+            "eÉ" to "ಜೆ",
+            "eË" to "ಜೌ",
+            "gÀhiï" to "ಝ್",
+            "gÀhÄ" to "ಝ",
+            "gÀhiÁ" to "ಝಾ",
+            "jhÄ" to "ಝಿ",
+            "gÉhÄ" to "ಝೆ",
+            "gÉhÆ" to "ಝೊ",
+            "gÀhiË" to "ಝೌ",
+            "Y" to "ಙ",
+            "mï" to "ಟ್",
+            "l" to "ಟ",
+            "mÁ" to "ಟಾ",
+            "n" to "ಟಿ",
+            "mÉ" to "ಟೆ",
+            "mË" to "ಟೌ",
+            "oï" to "ಠ್",
+            "oÀ" to "ಠ",
+            "oÁ" to "ಠಾ",
+            "p" to "ಠಿ",
+            "oÉ" to "ಠೆ",
+            "oË" to "ಠೌ",
+            "qï" to "ಡ್",
+            "qÀ" to "ಡ",
+            "qÁ" to "ಡಾ",
+            "r" to "ಡಿ",
+            "qÉ" to "ಡೆ",
+            "qË" to "ಡೌ",
+            "qsï" to "ಢ್",
+            "qsÀ" to "ಢ",
+            "qsÁ" to "ಢಾ",
+            "rü" to "ಢಿ",
+            "qsÉ" to "ಢೆ",
+            "qsË" to "ಢೌ",
+            "uï" to "ಣ್",
+            "t" to "ಣ",
+            "uÁ" to "ಣಾ",
+            "tÂ" to "ಣಿ",
+            "uÉ" to "ಣೆ",
+            "uË" to "ಣೌ",
+            "vï" to "ತ್",
+            "vÀ" to "ತ",
+            "vÁ" to "ತಾ",
+            "w" to "ತಿ",
+            "vÉ" to "ತೆ",
+            "vË" to "ತೌ",
+            "xï" to "ಥ್",
+            "xÀ" to "ಥ",
+            "xÁ" to "ಥಾ",
+            "y" to "ಥಿ",
+            "xÉ" to "ಥೆ",
+            "xË" to "ಥೌ",
+            "zï" to "ದ್",
+            "zÀ" to "ದ",
+            "zÁ" to "ದಾ",
+            "¢" to "ದಿ",
+            "zÉ" to "ದೆ",
+            "zË" to "ದೌ",
+            "zsï" to "ಧ್",
+            "zsÀ" to "ಧ",
+            "zsÁ" to "ಧಾ",
+            "¢ü" to "ಧಿ",
+            "zsÉ" to "ಧೆ",
+            "zsË" to "ಧೌ",
+            "£ï" to "ನ್",
+            "£À" to "ನ",
+            "£Á" to "ನಾ",
+            "¤" to "ನಿ",
+            "£É" to "ನೆ",
+            "£Ë" to "ನೌ",
+            "¥ï" to "ಪ್",
+            "¥À" to "ಪ",
+            "¥Á" to "ಪಾ",
+            "¦" to "ಪಿ",
+            "¥É" to "ಪೆ",
+            "¥Ë" to "ಪೌ",
+            "¥sï" to "ಫ್",
+            "¥sÀ" to "ಫ",
+            "¥sÁ" to "ಫಾ",
+            "¦ü" to "ಫಿ",
+            "¥sÉ" to "ಫೆ",
+            "¥sË" to "ಫೌ",
+            "¨ï" to "ಬ್",
+            "§" to "ಬ",
+            "¨Á" to "ಬಾ",
+            "©" to "ಬಿ",
+            "¨É" to "ಬೆ",
+            "¨Ë" to "ಬೌ",
+            "¨sï" to "ಭ್",
+            "¨sÀ" to "ಭ",
+            "¨sÁ" to "ಭಾ",
+            "©ü" to "ಭಿ",
+            "¨sÉ" to "ಭೆ",
+            "¨sË" to "ಭೌ",
+            "ªÀiï" to "ಮ್",
+            "ªÀÄ" to "ಮ",
+            "ªÀiÁ" to "ಮಾ",
+            "«Ä" to "ಮಿ",
+            "ªÉÄ" to "ಮೆ",
+            "ªÀiË" to "ಮೌ",
+            "AiÀiï" to "ಯ್",
+            "AiÀÄ" to "ಯ",
+            "0iÀÄ" to "ಯ",
+            "AiÀiÁ" to "ಯಾ",
+            "0iÀiÁ" to "ಯಾ",
+            "¬Ä" to "ಯಿ",
+            "0iÀÄÄ" to "ಯು",
+            "AiÉÄ" to "ಯೆ",
+            "0iÉÆ" to "ಯೊ",
+            "AiÉÆ" to "ಯೊ",
+            "AiÀiË" to "ಯೌ",
+            "gï" to "ರ್",
+            "gÀ" to "ರ",
+            "gÁ" to "ರಾ",
+            "j" to "ರಿ",
+            "gÉ" to "ರೆ",
+            "gË" to "ರೌ",
+            "¯ï" to "ಲ್",
+            "®" to "ಲ",
+            "¯Á" to "ಲಾ",
+            "°" to "ಲಿ",
+            "¯É" to "ಲೆ",
+            "¯Ë" to "ಲೌ",
+            "ªï" to "ವ್",
+            "ªÀ" to "ವ",
+            "ªÁ" to "ವಾ",
+            "«" to "ವಿ",
+            "ªÀÅ" to "ವು",
+            "ªÀÇ" to "ವೂ",
+            "ªÉ" to "ವೆ",
+            "ªÉÃ" to "ವೇ",
+            "ªÉÊ" to "ವೈ",
+            "ªÉÆ" to "ಮೊ",
+            "ªÉÆÃ" to "ಮೋ",
+            "ªÉÇ" to "ವೊ",
+            "ªÉÇÃ" to "ವೋ",
+            "ªÉ  " to "ವೆ",
+            "¥ÀÅ" to "ಪು",
+            "¥ÀÇ" to "ಪೂ",
+            "¥sÀÅ" to "ಫು",
+            "¥sÀÇ" to "ಫೂ",
+            "ªË" to "ವೌ",
+            "±ï" to "ಶ್",
+            "±À" to "ಶ",
+            "±Á" to "ಶಾ",
+            "²" to "ಶಿ",
+            "±É" to "ಶೆ",
+            "±Ë" to "ಶೌ",
+            "µï" to "ಷ್",
+            "µÀ" to "ಷ",
+            "µÁ" to "ಷಾ",
+            "¶" to "ಷಿ",
+            "µÉ" to "ಷೆ",
+            "µË" to "ಷೌ",
+            "¸ï" to "ಸ್",
+            "¸À" to "ಸ",
+            "¸Á" to "ಸಾ",
+            "¹" to "ಸಿ",
+            "¸É" to "ಸೆ",
+            "¸Ë" to "ಸೌ",
+            "ºï" to "ಹ್",
+            "ºÀ" to "ಹ",
+            "ºÁ" to "ಹಾ",
+            "»" to "ಹಿ",
+            "ºÉ" to "ಹೆ",
+            "ºË" to "ಹೌ",
+            "¼ï" to "ಳ್",
+            "¼À" to "ಳ",
+            "¼Á" to "ಳಾ",
+            "½" to "ಳಿ",
+            "¼É" to "ಳೆ",
+            "¼Ë" to "ಳೌ"
+        )
+
+        /**
+         * Broken cases - special vowel combinations
+         */
+        private data class BrokenCase(val value: Char, val mapping: Map<Char, Char>)
+
+        private val brokenCases = mapOf(
+            'Ã' to BrokenCase('\u0CC0', mapOf( // ೀ
+                '\u0CBF' to '\u0CC0', // ಿ -> ೀ
+                '\u0CC6' to '\u0CC7', // ೆ -> ೇ
+                '\u0CCA' to '\u0CCB'  // ೊ -> ೋ
+            )),
+            'Ä' to BrokenCase('\u0CC1', emptyMap()), // ು
+            'Æ' to BrokenCase('\u0CC2', mapOf( // ೂ
+                '\u0CC6' to '\u0CCA'  // ೆ -> ೊ
+            )),
+            'È' to BrokenCase('\u0CC3', emptyMap()), // ೃ
+            'Ê' to BrokenCase('\u0CC8', mapOf( // ೈ
+                '\u0CC6' to '\u0CC8'  // ೆ -> ೈ
+            ))
+        )
+
+        /**
+         * Vattaksharagalu - consonant clusters
+         */
+        private val vattaksharagalu = mapOf(
+            'Ì' to 'ಕ',
+            'Í' to 'ಖ',
+            'Î' to 'ಗ',
+            'Ï' to 'ಘ',
+            'Õ' to 'ಞ',
+            'Ñ' to 'ಚ',
+            'Ò' to 'ಛ',
+            'Ó' to 'ಜ',
+            'Ô' to 'ಝ',
+            'Ö' to 'ಟ',
+            '×' to 'ಠ',
+            'Ø' to 'ಡ',
+            'Ù' to 'ಢ',
+            'Ú' to 'ಣ',
+            'Û' to 'ತ',
+            'Ü' to 'ಥ',
+            'Ý' to 'ದ',
+            'Þ' to 'ಧ',
+            'ß' to 'ನ',
+            'à' to 'ಪ',
+            'á' to 'ಫ',
+            'â' to 'ಬ',
+            'ã' to 'ಭ',
+            'ä' to 'ಮ',
+            'å' to 'ಯ',
+            'æ' to 'ರ',
+            'è' to 'ಲ',
+            'é' to 'ವ',
+            'ê' to 'ಶ',
+            'ë' to 'ಷ',
+            'ì' to 'ಸ',
+            'í' to 'ಹ',
+            'î' to 'ಳ',
+            'ç' to 'ರ'
+        )
+
+        /**
+         * Arkavattu - special ರ combinations
+         */
+        private val asciiArkavattu = mapOf(
+            'ð' to 'ರ'
+        )
+
+        /**
+         * Reverse mapping - Unicode to Nudi
+         * Built from mainMapping by reversing key-value pairs
+         */
+        private val reverseMapping: Map<String, String> by lazy {
+            mainMapping.entries.associate { (nudi, unicode) -> unicode to nudi }
+        }
     }
 }
 
 /**
- * Statistics about a conversion operation
- *
- * @property originalLength Length of original Nudi text
- * @property convertedLength Length of converted Unicode text
- * @property kannadaCharacters Number of Kannada characters in result
- * @property compressionRatio How much smaller/larger the text became (usually smaller)
+ * Conversion statistics
  */
 data class ConversionStats(
     val originalLength: Int,

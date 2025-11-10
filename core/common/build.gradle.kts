@@ -62,6 +62,10 @@ dependencies {
     // JSON is like a universal language for data
     implementation(libs.gson)
 
+    // AndroidX Security - For encrypted storage and secure data handling
+    // Provides EncryptedSharedPreferences and Android Keystore integration
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // Testing libraries
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

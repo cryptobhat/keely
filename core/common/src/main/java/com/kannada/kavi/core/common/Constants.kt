@@ -88,9 +88,36 @@ object Constants {
      */
     object Voice {
         const val LANGUAGE_CODE_KANNADA = "kn-IN"
-        const val SPEECH_TIMEOUT_MS = 5000L      // 5 seconds timeout for voice input
-        const val DEFAULT_SPEECH_RATE = 1.0f     // Normal speech speed
-        const val DEFAULT_PITCH = 1.0f           // Normal voice pitch
+        const val LANGUAGE_CODE_SHORT = "kn"         // Short language code for Bhashini
+        const val SPEECH_TIMEOUT_MS = 5000L          // 5 seconds timeout for voice input
+        const val DEFAULT_SPEECH_RATE = 1.0f         // Normal speech speed
+        const val DEFAULT_PITCH = 1.0f               // Normal voice pitch
+
+        // Bhashini API Configuration - CORRECTED
+        const val BHASHINI_AUTH_BASE_URL = "https://meity-auth.ulcacontrib.org/"
+        const val BHASHINI_INFERENCE_BASE_URL = "https://dhruva-api.bhashini.gov.in/"
+
+        const val BHASHINI_ENDPOINT_PIPELINE = "ulca/apis/v0/model/getModelsPipeline"
+        const val BHASHINI_ENDPOINT_INFERENCE = "services/inference/pipeline"
+
+        // Pipeline IDs (from Bhashini documentation)
+        const val BHASHINI_PIPELINE_ID = "64392f96daac500b55c543cd"
+
+        // Service IDs for Kannada
+        const val BHASHINI_TTS_SERVICE_ID = "ai4bharat/indic-tts:v0"
+        const val BHASHINI_ASR_SERVICE_ID = "ai4bharat/conformer-multilingual-indo_aryan-gpu--t4"
+
+        // Audio Configuration
+        const val AUDIO_SAMPLE_RATE = 16000          // 16kHz sample rate
+        const val AUDIO_CHANNELS = 1                  // Mono channel
+        const val AUDIO_ENCODING_BIT_RATE = 16       // 16-bit encoding
+        const val MAX_RECORDING_DURATION_MS = 60000L  // 60 seconds max recording
+        const val MIN_RECORDING_DURATION_MS = 500L     // 500ms minimum
+
+        // TTS Configuration
+        const val TTS_SAMPLING_RATE = 8000           // 8kHz for TTS (Bhashini default)
+        const val TTS_GENDER_FEMALE = "female"
+        const val TTS_GENDER_MALE = "male"
     }
 
     /**
@@ -241,7 +268,7 @@ object Constants {
         // Transliteration settings
         const val MAX_CACHE_SIZE = 1000              // Cache 1000 frequent conversions
         const val ENABLE_CACHING = true              // Enable transliteration cache
-        const val CASE_SENSITIVE = false             // Ignore case when transliterating
+        const val CASE_SENSITIVE = true              // Preserve case to access retroflex/aspirated rules
         const val TRANSLITERATION_CONFIDENCE = 0.75f // Base confidence for transliteration
         const val MIN_WORD_LENGTH = 2                // Min chars to transliterate
         const val MAX_WORD_LENGTH = 50               // Max chars to transliterate

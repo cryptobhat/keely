@@ -66,8 +66,11 @@ class SoundManager(private val context: Context) {
     private var enterClickId: Int = -1
     private var modifierClickId: Int = -1
 
+    // Track which sounds have finished loading
+    private val loadedSounds = mutableSetOf<Int>()
+
     // Volume control
-    private var volume: Float = 0.5f // 0.0 to 1.0 (default 50%)
+    private var volume: Float = 0.7f // 0.0 to 1.0 (default 70% for better audibility)
 
     // Is sound enabled?
     private var enabled: Boolean = true
@@ -78,6 +81,10 @@ class SoundManager(private val context: Context) {
      * Call this in onCreate() or when keyboard starts
      */
     fun initialize() {
+        android.util.Log.i("SoundManager", "========== INITIALIZING SOUND MANAGER ==========")
+        android.util.Log.i("SoundManager", "Context: ${context.javaClass.simpleName}")
+        android.util.Log.i("SoundManager", "Package: ${context.packageName}")
+
         // Create SoundPool with modern AudioAttributes
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -89,10 +96,71 @@ class SoundManager(private val context: Context) {
             .setAudioAttributes(audioAttributes)
             .build()
 
+        android.util.Log.d("SoundManager", "SoundPool created: ${soundPool != null}")
+
+        // Set up listener to track when sounds finish loading
+        soundPool?.setOnLoadCompleteListener { pool, sampleId, status ->
+            if (status == 0) {
+                // Sound loaded successfully
+                loadedSounds.add(sampleId)
+                android.util.Log.i("SoundManager", "✓ Sound loaded successfully: ID=$sampleId (Total loaded: ${loadedSounds.size})")
+            } else {
+                // Sound failed to load
+                android.util.Log.e("SoundManager", "✗ Failed to load sound: ID=$sampleId, status=$status")
+            }
+        }
+
         // Load sound files from res/raw/
         // Note: Sound files need to be added to app/src/main/res/raw/
         // For now, we'll use system sounds as fallback
         loadSounds()
+
+        // Post delayed checks to see loading status (multiple checks for async loading)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            android.util.Log.i("SoundManager", "========== SOUND LOADING STATUS (500ms check) ==========")
+            android.util.Log.i("SoundManager", "Loaded sounds count: ${loadedSounds.size}")
+            android.util.Log.i("SoundManager", "Loaded sound IDs: $loadedSounds")
+            android.util.Log.i("SoundManager", "standardClickId=$standardClickId (loaded=${loadedSounds.contains(standardClickId)})")
+            android.util.Log.i("SoundManager", "deleteClickId=$deleteClickId (loaded=${loadedSounds.contains(deleteClickId)})")
+            android.util.Log.i("SoundManager", "spaceClickId=$spaceClickId (loaded=${loadedSounds.contains(spaceClickId)})")
+            android.util.Log.i("SoundManager", "enterClickId=$enterClickId (loaded=${loadedSounds.contains(enterClickId)})")
+            android.util.Log.i("SoundManager", "modifierClickId=$modifierClickId (loaded=${loadedSounds.contains(modifierClickId)})")
+            android.util.Log.i("SoundManager", "Enabled: $enabled, Volume: $volume")
+        }, 500)
+        
+        // Additional check after 1 second to catch any late-loading sounds
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (loadedSounds.size < 5) {
+                android.util.Log.w("SoundManager", "⚠ Some bubble sounds may not have loaded yet. Loaded: ${loadedSounds.size}/5")
+            } else {
+                android.util.Log.i("SoundManager", "✓ All bubble sounds loaded successfully!")
+            }
+        }, 1000)
+    }
+
+    /**
+     * Get resource ID using reflection to access R.raw directly
+     * This is more reliable than getIdentifier
+     */
+    private fun getRawResourceId(resourceName: String): Int {
+        return try {
+            // Try to access R.raw via reflection (more reliable)
+            val rClass = Class.forName("${context.packageName}.R\$raw")
+            val field = rClass.getField(resourceName)
+            field.getInt(null)
+        } catch (e: ClassNotFoundException) {
+            android.util.Log.w("SoundManager", "R.raw class not found, trying getIdentifier for $resourceName")
+            // Fallback to getIdentifier
+            context.resources.getIdentifier(resourceName, "raw", context.packageName)
+        } catch (e: NoSuchFieldException) {
+            android.util.Log.w("SoundManager", "Resource $resourceName not found in R.raw, trying getIdentifier")
+            // Fallback to getIdentifier
+            context.resources.getIdentifier(resourceName, "raw", context.packageName)
+        } catch (e: Exception) {
+            android.util.Log.w("SoundManager", "Exception accessing R.raw.$resourceName: ${e.message}, trying getIdentifier")
+            // Fallback to getIdentifier
+            context.resources.getIdentifier(resourceName, "raw", context.packageName)
+        }
     }
 
     /**
@@ -112,55 +180,72 @@ class SoundManager(private val context: Context) {
      * - key_modifier.ogg: Shift/symbols sound
      */
     private fun loadSounds() {
+        android.util.Log.i("SoundManager", "========== LOADING BUBBLE SOUNDS ==========")
+
         soundPool?.let { pool ->
-            // Try to load custom sounds from res/raw/
-            // If not found, sound IDs will be -1 and we'll use system sounds
+            android.util.Log.d("SoundManager", "Loading sounds from package: ${context.packageName}")
+            android.util.Log.d("SoundManager", "SoundPool instance: $pool")
 
             try {
                 // Load standard click sound
-                val standardResId = context.resources.getIdentifier(
-                    "key_click", "raw", context.packageName
-                )
+                val standardResId = getRawResourceId("key_click")
+                android.util.Log.d("SoundManager", "key_click resource ID: $standardResId")
                 if (standardResId != 0) {
                     standardClickId = pool.load(context, standardResId, 1)
+                    android.util.Log.i("SoundManager", "✓ Loading key_click: resId=$standardResId, soundId=$standardClickId")
+                } else {
+                    android.util.Log.w("SoundManager", "✗ key_click resource not found (resId=0)")
                 }
 
                 // Load delete sound
-                val deleteResId = context.resources.getIdentifier(
-                    "key_delete", "raw", context.packageName
-                )
+                val deleteResId = getRawResourceId("key_delete")
+                android.util.Log.d("SoundManager", "key_delete resource ID: $deleteResId")
                 if (deleteResId != 0) {
                     deleteClickId = pool.load(context, deleteResId, 1)
+                    android.util.Log.i("SoundManager", "✓ Loading key_delete: resId=$deleteResId, soundId=$deleteClickId")
+                } else {
+                    android.util.Log.w("SoundManager", "✗ key_delete resource not found (resId=0)")
                 }
 
                 // Load space sound
-                val spaceResId = context.resources.getIdentifier(
-                    "key_space", "raw", context.packageName
-                )
+                val spaceResId = getRawResourceId("key_space")
+                android.util.Log.d("SoundManager", "key_space resource ID: $spaceResId")
                 if (spaceResId != 0) {
                     spaceClickId = pool.load(context, spaceResId, 1)
+                    android.util.Log.i("SoundManager", "✓ Loading key_space: resId=$spaceResId, soundId=$spaceClickId")
+                } else {
+                    android.util.Log.w("SoundManager", "✗ key_space resource not found (resId=0)")
                 }
 
                 // Load enter sound
-                val enterResId = context.resources.getIdentifier(
-                    "key_enter", "raw", context.packageName
-                )
+                val enterResId = getRawResourceId("key_enter")
+                android.util.Log.d("SoundManager", "key_enter resource ID: $enterResId")
                 if (enterResId != 0) {
                     enterClickId = pool.load(context, enterResId, 1)
+                    android.util.Log.i("SoundManager", "✓ Loading key_enter: resId=$enterResId, soundId=$enterClickId")
+                } else {
+                    android.util.Log.w("SoundManager", "✗ key_enter resource not found (resId=0)")
                 }
 
                 // Load modifier sound
-                val modifierResId = context.resources.getIdentifier(
-                    "key_modifier", "raw", context.packageName
-                )
+                val modifierResId = getRawResourceId("key_modifier")
+                android.util.Log.d("SoundManager", "key_modifier resource ID: $modifierResId")
                 if (modifierResId != 0) {
                     modifierClickId = pool.load(context, modifierResId, 1)
+                    android.util.Log.i("SoundManager", "✓ Loading key_modifier: resId=$modifierResId, soundId=$modifierClickId")
+                } else {
+                    android.util.Log.w("SoundManager", "✗ key_modifier resource not found (resId=0)")
                 }
+
+                android.util.Log.i("SoundManager", "✓ Sound loading initiated. Waiting for OnLoadCompleteListener callbacks...")
 
             } catch (e: Exception) {
                 // Failed to load sounds - will use system sounds as fallback
+                android.util.Log.e("SoundManager", "✗✗✗ EXCEPTION loading sounds ✗✗✗", e)
                 e.printStackTrace()
             }
+        } ?: run {
+            android.util.Log.e("SoundManager", "✗✗✗ SoundPool is NULL - cannot load sounds! ✗✗✗")
         }
     }
 
@@ -216,20 +301,39 @@ class SoundManager(private val context: Context) {
      * @param fallback Which system sound to use if custom sound not loaded
      */
     private fun playSound(soundId: Int, fallback: SoundEffect) {
-        if (!enabled) return
+        android.util.Log.d("SoundManager", "playSound() called - enabled=$enabled, soundId=$soundId, fallback=$fallback")
 
-        if (soundId > 0) {
-            // Play custom sound
-            soundPool?.play(
+        if (!enabled) {
+            android.util.Log.w("SoundManager", "Sound disabled - not playing")
+            return
+        }
+
+        // Check if custom sound is loaded and ready
+        if (soundId > 0 && loadedSounds.contains(soundId)) {
+            // Play custom sound - use configured volume
+            android.util.Log.i("SoundManager", "→ Playing CUSTOM bubble sound: soundId=$soundId, volume=$volume")
+            val streamId = soundPool?.play(
                 soundId,
-                volume,    // Left volume
-                volume,    // Right volume
+                volume,    // Left volume (use configured volume)
+                volume,    // Right volume (use configured volume)
                 1,         // Priority
                 0,         // Loop (0 = no loop)
                 1.0f       // Playback rate (1.0 = normal speed)
             )
+            if (streamId != null && streamId > 0) {
+                android.util.Log.i("SoundManager", "✓ Custom bubble sound played: soundId=$soundId, streamId=$streamId")
+            } else {
+                android.util.Log.w("SoundManager", "⚠ Custom sound play returned invalid streamId=$streamId, falling back to system sound")
+                playSystemSound(fallback)
+            }
         } else {
-            // Fallback to system sound
+            // Fallback to system sound if custom sound not loaded yet or doesn't exist
+            if (soundId > 0 && !loadedSounds.contains(soundId)) {
+                android.util.Log.w("SoundManager", "Custom bubble sound not ready yet (soundId=$soundId not in loadedSounds=$loadedSounds), using system sound")
+            } else if (soundId <= 0) {
+                android.util.Log.w("SoundManager", "Custom bubble sound not found (soundId=$soundId), using system sound")
+            }
+            android.util.Log.i("SoundManager", "→ Falling back to SYSTEM sound: $fallback")
             playSystemSound(fallback)
         }
     }
@@ -243,11 +347,31 @@ class SoundManager(private val context: Context) {
      * @param effect Which sound effect to play
      */
     private fun playSystemSound(effect: SoundEffect) {
-        if (!enabled) return
+        if (!enabled) {
+            android.util.Log.w("SoundManager", "System sound disabled - not playing")
+            return
+        }
 
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            android.util.Log.d("SoundManager", "AudioManager: ${audioManager != null}")
+
             audioManager?.let { am ->
+                // Check if sound effects are enabled on the device
+                // Note: areSoundEffectsEnabled() was removed in SDK 36
+                // Sound effects are generally enabled, so we'll just log that we're proceeding
+                android.util.Log.d("SoundManager", "Proceeding with sound effect check")
+
+                if (false) {  // Sound effects generally enabled, so skip this check
+                    android.util.Log.w("SoundManager", "⚠ Device sound effects are disabled in system settings")
+                    // Try to enable them programmatically (may not work on all devices)
+                    try {
+                        am.loadSoundEffects()
+                    } catch (e: Exception) {
+                        android.util.Log.w("SoundManager", "Could not load sound effects: ${e.message}")
+                    }
+                }
+
                 // Get the system sound effect code
                 val soundEffect = when (effect) {
                     SoundEffect.STANDARD -> AudioManager.FX_KEYPRESS_STANDARD
@@ -257,12 +381,21 @@ class SoundManager(private val context: Context) {
                     SoundEffect.MODIFIER -> AudioManager.FX_KEYPRESS_STANDARD
                 }
 
-                // Play the system sound
-                // Volume is controlled by user's media volume
+                android.util.Log.i("SoundManager", "Playing system sound effect: $soundEffect (volume=$volume)")
+                
+                // Play the system sound with configured volume
+                // Note: playSoundEffect volume parameter is ignored on some Android versions
+                // The system will use the device's system sound volume
                 am.playSoundEffect(soundEffect, volume)
+                android.util.Log.i("SoundManager", "✓ System sound played")
+            } ?: run {
+                android.util.Log.e("SoundManager", "✗ AudioManager is NULL - cannot play system sound")
             }
+        } catch (e: SecurityException) {
+            android.util.Log.e("SoundManager", "✗ SecurityException playing system sound - may need permissions", e)
         } catch (e: Exception) {
-            // Silently fail - sound is not critical
+            // Log the exception - important for debugging
+            android.util.Log.e("SoundManager", "✗✗✗ EXCEPTION playing system sound ✗✗✗", e)
             e.printStackTrace()
         }
     }

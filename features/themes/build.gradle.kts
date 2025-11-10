@@ -49,6 +49,7 @@ dependencies {
 
     // Module-specific dependencies
     implementation(project(":core:common"))
+    implementation(project(":core:layout-manager"))
     implementation(project(":data:preferences"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

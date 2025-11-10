@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
+    implementation(libs.gson)
 
     // Testing
     testImplementation(libs.junit)

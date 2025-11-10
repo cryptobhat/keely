@@ -60,7 +60,12 @@ data class Key(
     /**
      * Is this key currently enabled?
      */
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+
+    /**
+     * Optional hint shown on the key (e.g., number hints on QWERTY row)
+     */
+    val hint: String? = null
 ) : Parcelable {
 
     /**
@@ -186,13 +191,15 @@ enum class KeyType {
  */
 fun characterKey(
     char: String,
-    longPress: List<String>? = null
+    longPress: List<String>? = null,
+    hint: String? = null
 ) = Key(
     label = char,
     output = char,
     type = KeyType.CHARACTER,
     width = 1.0f,
-    longPressKeys = longPress
+    longPressKeys = longPress,
+    hint = hint
 )
 
 /**
@@ -202,13 +209,15 @@ fun characterKey(
 fun modifierKey(
     label: String,
     type: KeyType,
-    width: Float = 1.0f
+    width: Float = 1.0f,
+    hint: String? = null
 ) = Key(
     label = label,
     output = "",
     type = type,
     width = width,
-    showPopup = false
+    showPopup = false,
+    hint = hint
 )
 
 /**

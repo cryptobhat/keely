@@ -1462,7 +1462,8 @@ class KaviInputMethodService : InputMethodService() {
      */
     private fun initializeVoiceInputManager() {
         try {
-            val apiKey = ApiKeyManager.getApiKey()
+            val apiKeyManager = ApiKeyManager(this)
+            val apiKey = apiKeyManager.getBhashiniApiKey()
             if (apiKey.isNullOrBlank()) {
                 android.util.Log.w("KaviIME", "Bhashini API key not found. Voice input disabled.")
                 android.util.Log.w("KaviIME", "To enable voice input, add BHASHINI_API_KEY to local.properties")
@@ -1471,16 +1472,16 @@ class KaviInputMethodService : InputMethodService() {
 
             // Create API service
             val apiService = BhashiniApiClient.create()
-            
+
             // Create audio recorder
             val audioRecorder = AudioRecorder()
-            
+
             // Create voice input manager
             voiceInputManager = VoiceInputManager(
                 context = this,
                 apiService = apiService,
                 audioRecorder = audioRecorder,
-                apiKey = apiKey
+                apiKey = apiKey!!
             )
             
             android.util.Log.d("KaviIME", "Voice input manager initialized successfully")

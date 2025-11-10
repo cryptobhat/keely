@@ -6,8 +6,6 @@ import com.google.gson.JsonSyntaxException
 import com.kannada.kavi.core.common.Result
 import com.kannada.kavi.data.preferences.KeyboardPreferences
 import com.kannada.kavi.features.themes.KeyboardTheme
-import com.kannada.kavi.features.themes.MaterialYouColorPalette
-import com.kannada.kavi.features.themes.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -218,19 +216,19 @@ class ThemeRepository(
             val themes = mutableListOf<ThemeInfo>()
 
             // Add built-in themes
-            themes.add(ThemeInfo(THEME_LIGHT, "Material You Light", ThemeMode.LIGHT))
-            themes.add(ThemeInfo(THEME_DARK, "Material You Dark", ThemeMode.DARK))
+            themes.add(ThemeInfo(THEME_LIGHT, "Material You Light", false))
+            themes.add(ThemeInfo(THEME_DARK, "Material You Dark", true))
 
             // Add dynamic themes if supported
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                themes.add(ThemeInfo(THEME_DYNAMIC_LIGHT, "Dynamic Light", ThemeMode.LIGHT, isDynamic = true))
-                themes.add(ThemeInfo(THEME_DYNAMIC_DARK, "Dynamic Dark", ThemeMode.DARK, isDynamic = true))
+                themes.add(ThemeInfo(THEME_DYNAMIC_LIGHT, "Dynamic Light", false, isDynamic = true))
+                themes.add(ThemeInfo(THEME_DYNAMIC_DARK, "Dynamic Dark", true, isDynamic = true))
             }
 
             // Add custom theme if exists
             val customThemeJson = preferences.getString(PREF_CUSTOM_THEME, null)
             if (customThemeJson != null) {
-                themes.add(ThemeInfo("custom", "Custom Theme", ThemeMode.LIGHT, isCustom = true))
+                themes.add(ThemeInfo("custom", "Custom Theme", false, isCustom = true))
             }
 
             Result.Success(themes)
@@ -250,26 +248,8 @@ class ThemeRepository(
             return null
         }
 
-        return try {
-            val colors = MaterialYouColorPalette.generateFromWallpaper(context, isDark)
-            if (colors != null) {
-                KeyboardTheme(
-                    id = if (isDark) THEME_DYNAMIC_DARK else THEME_DYNAMIC_LIGHT,
-                    name = if (isDark) "Dynamic Dark" else "Dynamic Light",
-                    mode = if (isDark) ThemeMode.DARK else ThemeMode.LIGHT,
-                    isDynamic = true,
-                    colors = colors,
-                    typography = com.kannada.kavi.features.themes.ThemeTypography.default(),
-                    shape = com.kannada.kavi.features.themes.ThemeShape.default(),
-                    spacing = com.kannada.kavi.features.themes.ThemeSpacing.default(),
-                    interaction = com.kannada.kavi.features.themes.ThemeInteraction.default()
-                )
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            null
-        }
+        // TODO: Implement dynamic theme generation once MaterialYouColorPalette is available
+        return null
     }
 
     /**
@@ -324,7 +304,7 @@ class ThemeRepository(
 data class ThemeInfo(
     val id: String,
     val name: String,
-    val mode: ThemeMode,
+    val isDark: Boolean, // Simplified from ThemeMode
     val isDynamic: Boolean = false,
     val isCustom: Boolean = false
 )

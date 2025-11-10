@@ -114,11 +114,10 @@ class LayoutLoader(private val context: Context) {
      * Read JSON file from assets folder
      */
     private fun readJsonFromAssets(fileName: String): String {
-        val inputStream = context.assets.open(fileName)
-        val reader = InputStreamReader(inputStream)
-        return reader.readText().also {
-            reader.close()
-            inputStream.close()
+        return context.assets.open(fileName).use { inputStream ->
+            InputStreamReader(inputStream, Charsets.UTF_8).use { reader ->
+                reader.readText()
+            }
         }
     }
 
@@ -268,16 +267,35 @@ class LayoutLoader(private val context: Context) {
     private fun parseKey(keyJson: JsonObject): Key {
         val label = keyJson.get("label")?.asString ?: ""
         val output = keyJson.get("output")?.asString ?: ""
+        val hint = keyJson.get("hint")?.asString
+            ?: keyJson.get("secondaryLabel")?.asString
         val typeString = keyJson.get("type")?.asString ?: "character"
-        val width = keyJson.get("width")?.asFloat ?: 1.0f
-
         // Convert type string to KeyType enum
         val type = parseKeyType(typeString)
+        val width = if (keyJson.has("width")) {
+            keyJson.get("width").asFloat
+        } else {
+            defaultWidthForType(type)
+        }
 
         // Parse long-press keys if available
         val longPressKeys = if (keyJson.has("longPress")) {
             val longPressArray = keyJson.getAsJsonArray("longPress")
-            longPressArray.map { it.asString }
+            val parsed = longPressArray.mapNotNull { element ->
+                when {
+                    element.isJsonPrimitive -> element.asString
+                    element.isJsonObject -> {
+                        val obj = element.asJsonObject
+                        when {
+                            obj.has("output") -> obj.get("output").asString
+                            obj.has("label") -> obj.get("label").asString
+                            else -> null
+                        }
+                    }
+                    else -> null
+                }
+            }
+            parsed.takeIf { it.isNotEmpty() }
         } else {
             null
         }
@@ -287,8 +305,27 @@ class LayoutLoader(private val context: Context) {
             output = output,
             type = type,
             width = width,
-            longPressKeys = longPressKeys
+            longPressKeys = longPressKeys,
+            hint = hint
         )
+    }
+
+    /**
+     * Provide sensible default widths for keys when JSON omits explicit sizing.
+     * This keeps the layouts usable even after removing width/height properties.
+     */
+    private fun defaultWidthForType(type: KeyType): Float {
+        return when (type) {
+            KeyType.SPACE -> 4.0f
+            KeyType.SHIFT,
+            KeyType.DELETE,
+            KeyType.ENTER,
+            KeyType.DEFAULT -> 1.5f
+            KeyType.SYMBOLS,
+            KeyType.SYMBOLS_ALT,
+            KeyType.SYMBOLS_EXTRA -> 1.5f
+            else -> 1.0f
+        }
     }
 
     /**
@@ -296,7 +333,7 @@ class LayoutLoader(private val context: Context) {
      * Example: "shift" → KeyType.SHIFT
      */
     private fun parseKeyType(typeString: String): KeyType {
-        return when (typeString.lowercase()) {
+        return when (typeString.lowercase(java.util.Locale.ROOT)) {
             "character" -> KeyType.CHARACTER
             "shift" -> KeyType.SHIFT
             "delete" -> KeyType.DELETE
@@ -306,7 +343,7 @@ class LayoutLoader(private val context: Context) {
             "symbols_extra" -> KeyType.SYMBOLS_EXTRA
             "symbols_alt" -> KeyType.SYMBOLS_ALT
             "default" -> KeyType.DEFAULT
-            "language" -> KeyType.LANGUAGE
+            "language", "lang" -> KeyType.LANGUAGE  // Accept both "language" and "lang"
             "emoji" -> KeyType.EMOJI
             "voice" -> KeyType.VOICE
             "settings" -> KeyType.SETTINGS
