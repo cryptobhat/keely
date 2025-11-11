@@ -2,6 +2,7 @@ package com.kannada.kavi.data.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.kannada.kavi.core.common.Constants
 
 /**
  * KeyboardPreferences - Centralized Preference Management
@@ -49,6 +50,16 @@ class KeyboardPreferences(context: Context) {
 
     fun isDynamicThemeEnabled(): Boolean = prefs.getBoolean(KEY_DYNAMIC_THEME, false)
 
+    fun setDarkModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DARK_MODE, enabled).apply()
+    }
+
+    fun isDarkModeEnabled(): Boolean? = if (prefs.contains(KEY_DARK_MODE)) {
+        prefs.getBoolean(KEY_DARK_MODE, false)
+    } else {
+        null // Return null if not set (use system default)
+    }
+
     fun setCustomThemeJson(json: String?) {
         if (json == null) {
             prefs.edit().remove(KEY_CUSTOM_THEME).apply()
@@ -59,12 +70,55 @@ class KeyboardPreferences(context: Context) {
 
     fun getCustomThemeJson(): String? = prefs.getString(KEY_CUSTOM_THEME, null)
 
+    fun setThemeVariant(variant: String) {
+        prefs.edit().putString(KEY_THEME_VARIANT, variant).apply()
+    }
+
+    fun getThemeVariant(): String = prefs.getString(KEY_THEME_VARIANT, THEME_VARIANT_DEFAULT) ?: THEME_VARIANT_DEFAULT
+
     // Layout preferences
     fun setCurrentLayout(layoutId: String) {
         prefs.edit().putString(KEY_CURRENT_LAYOUT, layoutId).apply()
     }
 
     fun getCurrentLayout(): String = prefs.getString(KEY_CURRENT_LAYOUT, DEFAULT_LAYOUT) ?: DEFAULT_LAYOUT
+
+    // Multiple layout support
+    fun getEnabledLayouts(): Set<String> {
+        // Get saved enabled layouts or default to all available layouts
+        val saved = prefs.getStringSet(KEY_ENABLED_LAYOUTS, null)
+        return if (saved != null && saved.isNotEmpty()) {
+            saved
+        } else {
+            // Default to all layouts enabled if not set
+            setOf("qwerty", "phonetic", "kavi")
+        }
+    }
+
+    fun setEnabledLayouts(layouts: Set<String>) {
+        prefs.edit().putStringSet(KEY_ENABLED_LAYOUTS, layouts).apply()
+    }
+
+    fun isLayoutEnabled(layoutId: String): Boolean {
+        return getEnabledLayouts().contains(layoutId)
+    }
+
+    fun toggleLayoutEnabled(layoutId: String) {
+        val currentLayouts = getEnabledLayouts().toMutableSet()
+        if (currentLayouts.contains(layoutId)) {
+            // Don't allow disabling all layouts
+            if (currentLayouts.size > 1) {
+                currentLayouts.remove(layoutId)
+                // If current layout is being disabled, switch to first enabled layout
+                if (getCurrentLayout() == layoutId) {
+                    setCurrentLayout(currentLayouts.first())
+                }
+            }
+        } else {
+            currentLayouts.add(layoutId)
+        }
+        setEnabledLayouts(currentLayouts)
+    }
 
     // Input preferences
     fun setAutoCapitalization(enabled: Boolean) {
@@ -73,17 +127,43 @@ class KeyboardPreferences(context: Context) {
 
     fun isAutoCapitalizationEnabled(): Boolean = prefs.getBoolean(KEY_AUTO_CAPS, true)
 
+    // Auto-capitalization modes: "none", "words", "sentences", "all"
+    fun setAutoCapitalizationMode(mode: String) {
+        prefs.edit().putString(KEY_AUTO_CAP_MODE, mode).apply()
+    }
+
+    fun getAutoCapitalizationMode(): String = prefs.getString(KEY_AUTO_CAP_MODE, "sentences") ?: "sentences"
+
     fun setKeyPressSound(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_SOUND, enabled).apply()
     }
 
     fun isKeyPressSoundEnabled(): Boolean = prefs.getBoolean(KEY_SOUND, false)
 
+    fun setKeyPressSoundVolume(volume: Float) {
+        val clamped = volume.coerceIn(
+            Constants.Audio.MIN_SOUND_VOLUME,
+            Constants.Audio.MAX_SOUND_VOLUME
+        )
+        prefs.edit().putFloat(KEY_SOUND_VOLUME, clamped).apply()
+    }
+
+    fun getKeyPressSoundVolume(): Float {
+        return prefs.getFloat(KEY_SOUND_VOLUME, Constants.Audio.DEFAULT_SOUND_VOLUME)
+            .coerceIn(Constants.Audio.MIN_SOUND_VOLUME, Constants.Audio.MAX_SOUND_VOLUME)
+    }
+
     fun setKeyPressVibration(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_VIBRATION, enabled).apply()
     }
 
     fun isKeyPressVibrationEnabled(): Boolean = prefs.getBoolean(KEY_VIBRATION, true)
+
+    fun setKeyPressVibrationDuration(duration: Int) {
+        prefs.edit().putInt(KEY_VIBRATION_DURATION, duration.coerceIn(10, 100)).apply()
+    }
+
+    fun getKeyPressVibrationDuration(): Int = prefs.getInt(KEY_VIBRATION_DURATION, 20)
 
     // Advanced features
     fun setPredictiveText(enabled: Boolean) {
@@ -136,13 +216,30 @@ class KeyboardPreferences(context: Context) {
 
     fun isClipboardSyncEnabled(): Boolean = prefs.getBoolean(KEY_CLIPBOARD_SYNC, false)
 
-    // Swipe typing sensitivity (0.0-1.0, default 0.5)
+    // Number row preference
+    fun setNumberRowEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NUMBER_ROW, enabled).apply()
+    }
+
+    fun isNumberRowEnabled(): Boolean = prefs.getBoolean(KEY_NUMBER_ROW, false)
+
+    // One-handed mode preference
+    fun setOneHandedMode(mode: String) {  // "off", "left", "right"
+        prefs.edit().putString(KEY_ONE_HANDED_MODE, mode).apply()
+    }
+
+    fun getOneHandedMode(): String = prefs.getString(KEY_ONE_HANDED_MODE, "off") ?: "off"
+
+    // Swipe typing sensitivity (0.5-2.0, default 1.0 to match slider)
     fun setSwipeTypingSensitivity(sensitivity: Float) {
-        val clampedSensitivity = sensitivity.coerceIn(0f, 1f)
+        val clampedSensitivity = sensitivity.coerceIn(0.5f, 2.0f)
         prefs.edit().putFloat(KEY_SWIPE_SENSITIVITY, clampedSensitivity).apply()
     }
 
-    fun getSwipeTypingSensitivity(): Float = prefs.getFloat(KEY_SWIPE_SENSITIVITY, 0.5f)
+    fun getSwipeTypingSensitivity(): Float {
+        val stored = prefs.getFloat(KEY_SWIPE_SENSITIVITY, 1.0f)
+        return stored.coerceIn(0.5f, 2.0f)
+    }
 
     // Swipe path visibility
     fun setSwipePathVisible(visible: Boolean) {
@@ -159,6 +256,48 @@ class KeyboardPreferences(context: Context) {
     }
 
     fun getKeyboardHeightPercentage(): Int = prefs.getInt(KEY_KEYBOARD_HEIGHT, 100)
+
+    // TTS (Text-to-Speech) preferences
+    fun isTtsEnabled(): Boolean = prefs.getBoolean(KEY_TTS_ENABLED, false)
+
+    fun setTtsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TTS_ENABLED, enabled).apply()
+    }
+
+    fun getTtsEngine(): String? = prefs.getString(KEY_TTS_ENGINE, "android_default")
+
+    fun setTtsEngine(engine: String) {
+        prefs.edit().putString(KEY_TTS_ENGINE, engine).apply()
+    }
+
+    fun getTtsSpeed(): Float = prefs.getFloat(KEY_TTS_SPEED, 1.0f).coerceIn(0.5f, 2.0f)
+
+    fun setTtsSpeed(speed: Float) {
+        prefs.edit().putFloat(KEY_TTS_SPEED, speed.coerceIn(0.5f, 2.0f)).apply()
+    }
+
+    fun getTtsPitch(): Float = prefs.getFloat(KEY_TTS_PITCH, 1.0f).coerceIn(0.5f, 2.0f)
+
+    fun setTtsPitch(pitch: Float) {
+        prefs.edit().putFloat(KEY_TTS_PITCH, pitch.coerceIn(0.5f, 2.0f)).apply()
+    }
+
+    fun getBhashiniApiKey(): String? = prefs.getString(KEY_BHASHINI_API_KEY, null)
+
+    fun setBhashiniApiKey(apiKey: String?) {
+        if (apiKey == null) {
+            prefs.edit().remove(KEY_BHASHINI_API_KEY).apply()
+        } else {
+            prefs.edit().putString(KEY_BHASHINI_API_KEY, apiKey).apply()
+        }
+    }
+
+    // Smart Punctuation preferences
+    fun isSmartPunctuationEnabled(): Boolean = prefs.getBoolean(KEY_SMART_PUNCTUATION, true)
+
+    fun setSmartPunctuationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SMART_PUNCTUATION, enabled).apply()
+    }
 
     // Utility methods
     fun getString(key: String, defaultValue: String? = null): String? {
@@ -225,15 +364,21 @@ class KeyboardPreferences(context: Context) {
         // Theme keys
         private const val KEY_THEME_ID = "theme_id"
         private const val KEY_DYNAMIC_THEME = "dynamic_theme"
+        private const val KEY_DARK_MODE = "dark_mode"
         private const val KEY_CUSTOM_THEME = "custom_theme_json"
+        const val KEY_THEME_VARIANT = "theme_variant"
+        private const val THEME_VARIANT_DEFAULT = "DEFAULT"
 
         // Layout keys
         private const val KEY_CURRENT_LAYOUT = "current_layout"
+        private const val KEY_ENABLED_LAYOUTS = "enabled_layouts"
         private const val DEFAULT_LAYOUT = "qwerty"
 
         // Input keys
         private const val KEY_AUTO_CAPS = "auto_capitalization"
+        private const val KEY_AUTO_CAP_MODE = "auto_cap_mode"
         private const val KEY_SOUND = "key_press_sound"
+        private const val KEY_SOUND_VOLUME = "key_press_sound_volume"
         private const val KEY_VIBRATION = "key_press_vibration"
 
         // Advanced feature keys
@@ -250,11 +395,28 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_CLIPBOARD_HISTORY = "clipboard_history"
         private const val KEY_CLIPBOARD_SYNC = "clipboard_sync"
 
+        // Layout feature keys
+        private const val KEY_NUMBER_ROW = "number_row_enabled"
+        private const val KEY_ONE_HANDED_MODE = "one_handed_mode"
+
+        // Vibration feature keys
+        private const val KEY_VIBRATION_DURATION = "vibration_duration"
+
         // Swipe typing settings
         private const val KEY_SWIPE_SENSITIVITY = "swipe_sensitivity"
         private const val KEY_SWIPE_PATH_VISIBLE = "swipe_path_visible"
 
         // Keyboard appearance keys
         private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percentage"
+
+        // TTS (Text-to-Speech) keys
+        private const val KEY_TTS_ENABLED = "tts_enabled"
+        private const val KEY_TTS_ENGINE = "tts_engine"
+        private const val KEY_TTS_SPEED = "tts_speed"
+        private const val KEY_TTS_PITCH = "tts_pitch"
+        private const val KEY_BHASHINI_API_KEY = "bhashini_api_key"
+
+        // Smart Punctuation keys
+        private const val KEY_SMART_PUNCTUATION = "smart_punctuation_enabled"
     }
 }

@@ -14,6 +14,7 @@ import com.kannada.kavi.features.settings.ui.components.*
 import com.kannada.kavi.features.themes.MaterialYouThemeManager
 import com.kannada.kavi.features.themes.ThemeVariant
 import com.kannada.kavi.features.themes.tokens.SpacingTokens
+import kotlin.math.roundToInt
 
 /**
  * SettingsScreen - Main settings screen with Material You design
@@ -38,19 +39,23 @@ fun SettingsScreen(
     onNavigateToClipboard: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {}
 ) {
-    // State
-    var isDarkMode by remember { mutableStateOf(themeManager.isDarkMode.value) }
-    var isDynamicColorEnabled by remember { mutableStateOf(themeManager.isDynamicColorEnabled.value) }
-    var themeVariant by remember { mutableStateOf(themeManager.currentVariant.value) }
+    // Reactive theme state
+    val isDarkMode by themeManager.isDarkMode.collectAsState()
+    val isDynamicColorEnabled by themeManager.isDynamicColorEnabled.collectAsState()
+    val themeVariant by themeManager.currentVariant.collectAsState()
 
     var autoCapitalization by remember { mutableStateOf(preferences.isAutoCapitalizationEnabled()) }
+    var autoCapitalizationMode by remember { mutableStateOf(preferences.getAutoCapitalizationMode()) }
     var keyPressSound by remember { mutableStateOf(preferences.isKeyPressSoundEnabled()) }
+    var keyPressSoundVolume by remember { mutableStateOf(preferences.getKeyPressSoundVolume()) }
     var keyPressVibration by remember { mutableStateOf(preferences.isKeyPressVibrationEnabled()) }
+    var keyPressVibrationDuration by remember { mutableStateOf(preferences.getKeyPressVibrationDuration().toFloat()) }
     var keyboardHeight by remember { mutableStateOf(preferences.getKeyboardHeightPercentage().toFloat()) }
 
     var predictiveText by remember { mutableStateOf(preferences.isPredictiveTextEnabled()) }
     var swipeTyping by remember { mutableStateOf(preferences.isSwipeTypingEnabled()) }
     var voiceInput by remember { mutableStateOf(preferences.isVoiceInputEnabled()) }
+    var smartPunctuation by remember { mutableStateOf(preferences.isSmartPunctuationEnabled()) }
 
     // Scroll behavior
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -105,8 +110,8 @@ fun SettingsScreen(
                         icon = Icons.Default.DarkMode,
                         checked = isDarkMode,
                         onCheckedChange = { checked ->
-                            isDarkMode = checked
                             themeManager.setDarkMode(checked)
+                            preferences.setDarkModeEnabled(checked)
                         }
                     )
 
@@ -118,9 +123,7 @@ fun SettingsScreen(
                         icon = Icons.Default.Palette,
                         checked = isDynamicColorEnabled,
                         onCheckedChange = { checked ->
-                            isDynamicColorEnabled = checked
                             themeManager.setDynamicColorEnabled(checked)
-                            // Also save to preferences so IME service can read it
                             preferences.setDynamicThemeEnabled(checked)
                         }
                     )
@@ -204,7 +207,7 @@ fun SettingsScreen(
 
                     SettingsSwitchItem(
                         title = "Auto-Capitalization",
-                        description = "Automatically capitalize first letter",
+                        description = "Automatically capitalize letters",
                         icon = Icons.Default.FormatSize,
                         checked = autoCapitalization,
                         onCheckedChange = { checked ->
@@ -212,6 +215,59 @@ fun SettingsScreen(
                             preferences.setAutoCapitalization(checked)
                         }
                     )
+
+                    if (autoCapitalization) {
+                        SettingsDivider()
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = SpacingTokens.base, vertical = SpacingTokens.sm)
+                        ) {
+                            Text(
+                                text = "Capitalization Mode",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = SpacingTokens.sm)
+                            )
+
+                            val modes = listOf(
+                                "None" to "none",
+                                "Sentences" to "sentences",
+                                "Words" to "words"
+                            )
+
+                            modes.forEach { (label, mode) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = SpacingTokens.xs),
+                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = autoCapitalizationMode == mode,
+                                        onClick = {
+                                            autoCapitalizationMode = mode
+                                            preferences.setAutoCapitalizationMode(mode)
+                                        },
+                                        modifier = Modifier.padding(end = SpacingTokens.sm)
+                                    )
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "• None: No automatic capitalization\n• Sentences: First letter after sentence end (. ! ?)\n• Words: First letter of every word",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = SpacingTokens.sm)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -233,6 +289,19 @@ fun SettingsScreen(
                         }
                     )
 
+                    SettingsSliderItem(
+                        title = "Key Press Volume",
+                        description = "Adjust how loud the key clicks are",
+                        icon = Icons.Default.VolumeDown,
+                        value = keyPressSoundVolume,
+                        onValueChange = { value ->
+                            keyPressSoundVolume = value
+                            preferences.setKeyPressSoundVolume(value)
+                        },
+                        valueLabel = { value -> "${(value * 100).roundToInt()}%" },
+                        enabled = keyPressSound
+                    )
+
                     SettingsDivider()
 
                     SettingsSwitchItem(
@@ -245,6 +314,39 @@ fun SettingsScreen(
                             preferences.setKeyPressVibration(checked)
                         }
                     )
+
+                    if (keyPressVibration) {
+                        SettingsDivider()
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = SpacingTokens.base, vertical = SpacingTokens.sm)
+                        ) {
+                            Text(
+                                text = "Vibration Duration: ${keyPressVibrationDuration.toInt()}ms",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Slider(
+                                value = keyPressVibrationDuration,
+                                onValueChange = { newDuration ->
+                                    keyPressVibrationDuration = newDuration
+                                    preferences.setKeyPressVibrationDuration(newDuration.toInt())
+                                },
+                                valueRange = 10f..100f,
+                                steps = 8,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = SpacingTokens.sm)
+                            )
+                            Text(
+                                text = "Light (10ms) ← → Strong (100ms)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
 
@@ -291,6 +393,19 @@ fun SettingsScreen(
                             preferences.setVoiceInput(checked)
                         },
                         enabled = false // Feature not implemented yet
+                    )
+
+                    SettingsDivider()
+
+                    SettingsSwitchItem(
+                        title = "Smart Punctuation",
+                        description = "Auto-convert quotes and dashes (\"→\", --→—, ...→…)",
+                        icon = Icons.Default.FormatSize,
+                        checked = smartPunctuation,
+                        onCheckedChange = { checked ->
+                            smartPunctuation = checked
+                            preferences.setSmartPunctuationEnabled(checked)
+                        }
                     )
                 }
             }

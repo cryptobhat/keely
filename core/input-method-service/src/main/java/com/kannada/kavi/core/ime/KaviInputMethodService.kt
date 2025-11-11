@@ -23,6 +23,8 @@ import com.kannada.kavi.ui.popupviews.EmojiBoardView
 import android.widget.PopupWindow
 import com.kannada.kavi.features.themes.DynamicThemeManager
 import com.kannada.kavi.features.themes.KeyboardDesignSystem
+import com.kannada.kavi.features.themes.ThemePresets
+import com.kannada.kavi.features.themes.ThemeVariant
 import android.view.Gravity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +45,7 @@ import com.kannada.kavi.features.voice.manager.VoiceInputManager
 import com.kannada.kavi.features.voice.recorder.AudioRecorder
 import com.kannada.kavi.features.voice.util.ApiKeyManager
 import com.kannada.kavi.features.analytics.AnalyticsManager
+import com.kannada.kavi.features.suggestion.models.Suggestion
 import kotlin.jvm.Volatile
 
 /**
@@ -84,6 +87,9 @@ class KaviInputMethodService : InputMethodService() {
     // InputConnectionHandler sends text to the app
     private lateinit var inputConnectionHandler: InputConnectionHandler
 
+    // SmartPunctuationHandler for auto-converting quotes and dashes
+    private lateinit var smartPunctuationHandler: SmartPunctuationHandler
+
     // SoundManager handles key press sound effects
     private lateinit var soundManager: SoundManager
 
@@ -99,9 +105,35 @@ class KaviInputMethodService : InputMethodService() {
             "dark_mode" -> {
                 // Update dark mode setting
                 preferences.isDarkModeEnabled()?.let { isDarkMode ->
+                    android.util.Log.d("KaviIME", "Dark mode preference changed to: $isDarkMode")
                     if (::dynamicThemeManager.isInitialized) {
                         dynamicThemeManager.setDarkMode(isDarkMode)
+                        // Force immediate color refresh
+                        serviceScope.launch(Dispatchers.Main) {
+                            delay(100) // Small delay to ensure theme manager updates
+                            keyboardView?.refreshColors()
+                        }
                     }
+                }
+                applyUserThemeFallback()
+            }
+            "clipboard_sync" -> {
+                // Toggle clipboard system sync
+                if (::clipboardManager.isInitialized) {
+                    if (preferences.isClipboardSyncEnabled()) {
+                        clipboardManager.startSystemListener()
+                        android.util.Log.d("KaviIME", "Clipboard sync enabled")
+                    } else {
+                        clipboardManager.stopSystemListener()
+                        android.util.Log.d("KaviIME", "Clipboard sync disabled")
+                    }
+                }
+            }
+            "number_row_enabled" -> {
+                // Update layout when number row preference changes
+                if (::layoutManager.isInitialized) {
+                    layoutManager.reset()
+                    android.util.Log.d("KaviIME", "Number row preference changed: ${preferences.isNumberRowEnabled()}")
                 }
             }
             PREF_KEY_KEYBOARD_HEIGHT -> {
@@ -117,6 +149,9 @@ class KaviInputMethodService : InputMethodService() {
                     soundManager.disable()
                 }
             }
+            "key_press_sound_volume" -> {
+                soundManager.setVolume(preferences.getKeyPressSoundVolume())
+            }
             "key_press_vibration" -> {
                 // Update vibration setting
                 if (preferences.isKeyPressVibrationEnabled()) {
@@ -128,18 +163,30 @@ class KaviInputMethodService : InputMethodService() {
             "dynamic_theme" -> {
                 // Update dynamic color setting
                 val isDynamicEnabled = preferences.isDynamicThemeEnabled()
+                android.util.Log.d("KaviIME", "Dynamic theme changed to: $isDynamicEnabled")
+
                 dynamicThemeManager.setDynamicColorEnabled(isDynamicEnabled)
-                
+
                 // Track theme change for analytics
                 if (::analyticsManager.isInitialized) {
                     val isDark = dynamicThemeManager.isDarkMode.value
                     analyticsManager.trackThemeChanged("dynamic", isDark, isDynamicEnabled)
                 }
-                
-                // Force update color scheme to apply changes immediately
-                serviceScope.launch(Dispatchers.Main) {
-                    dynamicThemeManager.updateColorSchemeAsync()
+
+                if (!isDynamicEnabled) {
+                    // When disabling dynamic theme, immediately apply static colors
+                    applyUserThemeFallback()
+                } else {
+                    // Force update color scheme to apply changes immediately
+                    serviceScope.launch(Dispatchers.Main) {
+                        dynamicThemeManager.updateColorSchemeAsync()
+                        delay(200)
+                        keyboardView?.refreshColors()
+                    }
                 }
+            }
+            "theme_variant" -> {
+                applyUserThemeFallback()
             }
         }
     }
@@ -163,6 +210,7 @@ class KaviInputMethodService : InputMethodService() {
 
     // The suggestion strip view above the keyboard
     private var suggestionStripView: SuggestionStripView? = null
+    private var suggestionSeparator: View? = null
 
     // Clipboard strip view
     private var clipboardStripView: ClipboardStripView? = null
@@ -171,6 +219,7 @@ class KaviInputMethodService : InputMethodService() {
     // Emoji board view
     private var emojiBoardView: EmojiBoardView? = null
     private var isEmojiBoardVisible = false
+    private var emojiPopup: android.widget.PopupWindow? = null
 
     // Dynamic theme manager for Material You support
     private lateinit var dynamicThemeManager: DynamicThemeManager
@@ -189,6 +238,7 @@ class KaviInputMethodService : InputMethodService() {
     private var layoutRowsJob: Job? = null
     private var layoutInfoJob: Job? = null
     private var suggestionStreamJob: Job? = null
+    private var swipeWordJob: Job? = null
 
     // Track recent IME-driven edits so cursor moves from user can be detected
     private var lastInternalEditTimestamp: Long = 0L
@@ -280,9 +330,13 @@ class KaviInputMethodService : InputMethodService() {
         // Initialize input connection handler
         inputConnectionHandler = InputConnectionHandler()
 
+        // Initialize smart punctuation handler
+        smartPunctuationHandler = SmartPunctuationHandler()
+
         // Initialize sound manager and apply preferences
         soundManager = SoundManager(this)
         soundManager.initialize()
+        soundManager.setVolume(preferences.getKeyPressSoundVolume())
         if (preferences.isKeyPressSoundEnabled()) {
             soundManager.enable()
         } else {
@@ -304,7 +358,10 @@ class KaviInputMethodService : InputMethodService() {
         // Initialize clipboard manager
         clipboardManager = ClipboardManager(this).apply {
             initialize()
-            startSystemListener()
+            // Start system listener only if clipboard sync is enabled
+            if (preferences.isClipboardSyncEnabled()) {
+                startSystemListener()
+            }
         }
 
         // Initialize analytics manager
@@ -337,22 +394,30 @@ class KaviInputMethodService : InputMethodService() {
                 e.printStackTrace()
             }
         }
+        applyUserThemeFallback()
 
         // Observe dynamic color scheme changes and update keyboard
         serviceScope.launch(Dispatchers.Main) {
             try {
                 dynamicThemeManager.keyboardColorScheme.collect { colorScheme ->
+                    android.util.Log.d("KaviIME", "Color scheme update received: ${colorScheme != null}")
                     colorScheme?.let {
-                        // Update design system with new colors
-                          KeyboardDesignSystem.setDynamicColorScheme(it)
-                          // Refresh keyboard view colors (if view exists)
-                          keyboardView?.refreshColors()
-                          suggestionStripView?.refreshColors()
-                          clipboardStripView?.refreshColors()
-                          keyboardRootContainer?.setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
-                          // Refresh emoji board colors
-                          emojiBoardView?.refreshColors()
-                      }
+                        // Update BOTH dynamic and fallback schemes to ensure colors are applied
+                        KeyboardDesignSystem.setDynamicColorScheme(it)
+                        KeyboardDesignSystem.setFallbackColorScheme(it)
+
+                        // Refresh keyboard view colors (if view exists)
+                        keyboardView?.let { view ->
+                            android.util.Log.d("KaviIME", "Refreshing keyboard view colors")
+                            view.refreshColors()
+                        }
+                        suggestionStripView?.refreshColors()
+                        clipboardStripView?.refreshColors()
+                        keyboardRootContainer?.setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
+                        suggestionSeparator?.setBackgroundColor(KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC)
+                        // Refresh emoji board colors
+                        emojiBoardView?.refreshColors()
+                    }
                 }
             } catch (e: Exception) {
                 // If theme updates fail, just continue with static colors
@@ -444,12 +509,12 @@ class KaviInputMethodService : InputMethodService() {
         container.addView(stripView, stripLayoutParams)
 
         // Add separator between suggestion bar and keyboard
-        val separatorView = View(this).apply {
+        suggestionSeparator = View(this).apply {
             val density = resources.displayMetrics.density
             val separatorHeight = (1 * density).toInt() // 1dp separator height
             val separatorMargin = (4 * density).toInt() // 4dp margin above separator
             
-            setBackgroundColor(0xFFE0E0E0.toInt()) // Light gray separator
+            setBackgroundColor(KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC)
             
             val separatorParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -459,7 +524,7 @@ class KaviInputMethodService : InputMethodService() {
             }
             layoutParams = separatorParams
         }
-        container.addView(separatorView)
+        container.addView(suggestionSeparator)
 
         // Create clipboard strip view (initially hidden)
         val clipboardStrip = ClipboardStripView(this).apply {
@@ -513,6 +578,9 @@ class KaviInputMethodService : InputMethodService() {
               setOnCommaEmojiLongPressListener {
                   showEmojiBoard()
               }
+              setOnEmojiLongPressListener { baseEmoji ->
+                  showEmojiSkinToneSelector(baseEmoji)
+              }
               setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)  // Match dynamic theme
 
             // Apply keyboard height adjustment from preferences
@@ -534,56 +602,18 @@ class KaviInputMethodService : InputMethodService() {
 
             // Set callback for swipe words
             setOnSwipeWordListener { rawWord ->
-                // Use SuggestionEngine to find the best matching word from dictionary
-                // This ensures we get the actual word user intended, not just raw key sequence
-                serviceScope.launch(Dispatchers.Main) {
+                val trimmed = rawWord.trim()
+                if (trimmed.isEmpty()) return@setOnSwipeWordListener
+                swipeWordJob?.cancel()
+                swipeWordJob = serviceScope.launch(Dispatchers.Main) {
                     val currentLayout = layoutManager.activeLayout.value
                     val language = if (currentLayout?.id == Constants.Layouts.LAYOUT_QWERTY) "en" else "kn"
-                    
-                    // Get suggestions for the raw swipe word
-                    // Try multiple approaches: exact match, prefix match, and fuzzy match
                     val suggestions = suggestionEngine.getSuggestions(
-                        currentWord = rawWord,
+                        currentWord = trimmed,
                         language = language
                     )
-                    
-                    // Find the best matching word
-                    val bestWord = when {
-                        // If we have suggestions, use the top one (highest confidence)
-                        suggestions.isNotEmpty() -> {
-                            val topSuggestion = suggestions.first()
-                            // Prefer suggestions that start with the same letter as raw word
-                            if (topSuggestion.word.isNotEmpty() && 
-                                rawWord.isNotEmpty() && 
-                                topSuggestion.word.first().equals(rawWord.first(), ignoreCase = true)) {
-                                topSuggestion.word
-                            } else {
-                                // Still use top suggestion even if first letter differs (fuzzy match)
-                                topSuggestion.word
-                            }
-                        }
-                        // Try prefix matching - check if raw word starts with any dictionary word
-                        rawWord.length >= 3 -> {
-                            // Try shorter prefixes to find matches
-                            val prefixSuggestions = suggestionEngine.getSuggestions(
-                                currentWord = rawWord.take(rawWord.length - 1),
-                                language = language
-                            )
-                            prefixSuggestions.firstOrNull()?.word ?: rawWord
-                        }
-                        // Fall back to raw word if too short or no matches
-                        else -> rawWord
-                    }
-                    
-                    android.util.Log.d("KaviIME", "Swipe word: raw='$rawWord', best='$bestWord', suggestions=${suggestions.take(5).map { "${it.word}(${it.confidence})" }}")
-                    
-                    // Insert the best matching word
-                    currentInputConnection?.commitText(bestWord, 1)
-                    // Add space after word
-                    currentInputConnection?.commitText(" ", 1)
-                    
-                    // Learn from the typed word
-                    suggestionEngine.onWordTyped(bestWord)
+                    val bestWord = selectSwipeWord(trimmed, suggestions)
+                    commitSwipeWord(bestWord)
                 }
             }
 
@@ -602,25 +632,36 @@ class KaviInputMethodService : InputMethodService() {
 
         // Create a FrameLayout to hold keyboard + swipe path overlay
         val keyboardContainer = android.widget.FrameLayout(this).apply {
+            // Add keyboard view first
             addView(view, android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT
             ))
 
             // Add swipe path view as overlay (if swipe typing is enabled)
-            // Make it match keyboard view bounds exactly to avoid layout issues
+            // Critical: Ensure SwipePathView has EXACT same bounds as KeyboardView for proper coordinate alignment
             if (preferences.isSwipeTypingEnabled() && preferences.isSwipePathVisible()) {
                 val swipePathView = com.kannada.kavi.ui.keyboardview.SwipePathView(this@KaviInputMethodService)
-                // Match keyboard view size exactly - use same layout params as keyboard view
+
+                // Match keyboard view size exactly - use identical layout params
                 val swipeLayoutParams = android.widget.FrameLayout.LayoutParams(
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT
                 )
+
+                // Add to container AFTER keyboard view to ensure it's on top
                 addView(swipePathView, swipeLayoutParams)
+
+                // Connect swipe path view to keyboard view
                 view.setSwipePathView(swipePathView)
-                
-                // Keep swipe path overlay above keyboard but non-interactive so touches pass through
+
+                // Ensure swipe path overlay is above keyboard but doesn't intercept touches
+                // Touch events will pass through to the keyboard view underneath
                 swipePathView.bringToFront()
+                swipePathView.isClickable = false
+                swipePathView.isFocusable = false
+
+                android.util.Log.d("KaviIME", "SwipePathView added as overlay with identical bounds to KeyboardView")
             }
         }
 
@@ -797,6 +838,7 @@ class KaviInputMethodService : InputMethodService() {
         layoutRowsJob?.cancel()
         layoutInfoJob?.cancel()
         suggestionStreamJob?.cancel()
+        swipeWordJob?.cancel()
 
         // Release sound resources
         soundManager.release()
@@ -970,10 +1012,16 @@ class KaviInputMethodService : InputMethodService() {
         // If phonetic layout is active, buffer roman input and replace inline with Kannada
         val activeLayoutId = layoutManager.activeLayout.value?.id
         val isPhonetic = activeLayoutId == Constants.Layouts.LAYOUT_PHONETIC
-        val adjustedOutput = if (!isPhonetic) {
+        var adjustedOutput = if (!isPhonetic) {
             applyAutoCapitalizationIfNeeded(keyOutput)
         } else {
             keyOutput
+        }
+
+        // Apply smart punctuation if enabled (only for non-phonetic mode)
+        if (!isPhonetic && preferences.isSmartPunctuationEnabled()) {
+            val textBeforeCursor = inputConnectionHandler.getTextBeforeCursor(100)
+            adjustedOutput = smartPunctuationHandler.processPunctuation(adjustedOutput, textBeforeCursor)
         }
 
 
@@ -1049,13 +1097,63 @@ class KaviInputMethodService : InputMethodService() {
     }
 
     /**
+     * Handle smart punctuation that needs to replace previous character
+     * Returns the modified output if replacement occurred, null otherwise
+     */
+    private fun handleSmartPunctuationReplacement(keyOutput: String): String? {
+        if (keyOutput.length != 1) return null
+
+        val char = keyOutput[0]
+        val ic = currentInputConnection ?: return null
+        val textBeforeCursor = ic.getTextBeforeCursor(10, 0)?.toString() ?: ""
+
+        if (textBeforeCursor.isEmpty()) return null
+
+        val lastChar = textBeforeCursor.last()
+
+        // Handle -- → — (em-dash)
+        if (char == '-' && lastChar == '-') {
+            inputConnectionHandler.performBatchEdit {
+                inputConnectionHandler.deleteText(1) // Delete the first dash
+                inputConnectionHandler.commitText("—") // Insert em-dash
+            }
+            markInternalEdit()
+            return ""  // Return empty to prevent double insert
+        }
+
+        // Handle ... → … (ellipsis)
+        if (char == '.' && textBeforeCursor.length >= 2) {
+            val lastTwo = textBeforeCursor.substring(textBeforeCursor.length - 2)
+            if (lastTwo == "..") {
+                inputConnectionHandler.performBatchEdit {
+                    inputConnectionHandler.deleteText(2) // Delete the two dots
+                    inputConnectionHandler.commitText("…") // Insert ellipsis
+                }
+                markInternalEdit()
+                return ""  // Return empty to prevent double insert
+            }
+        }
+
+        return null  // No replacement occurred
+    }
+
+    /**
      * Handle key press for Kavi layout with matra combining support
      * When a matra or full vowel is typed after a consonant, they should combine properly
      * Example: ಹ + ಊ → ಹೂ, ಕ + ಆ → ಕಾ, ಕ + ಾ → ಕಾ
      */
     private fun handleKaviKeyPress(keyOutput: String) {
         if (keyOutput.isEmpty()) return
-        
+
+        // Check for smart punctuation replacements first
+        val replacementResult = handleSmartPunctuationReplacement(keyOutput)
+        if (replacementResult != null) {
+            if (replacementResult.isNotEmpty()) {
+                inputConnectionHandler.commitText(replacementResult)
+            }
+            return
+        }
+
         val char = keyOutput[0]
         
         // Check if this is a Kannada matra (vowel sign) or full vowel
@@ -1132,10 +1230,14 @@ class KaviInputMethodService : InputMethodService() {
         if (input.length != 1) return input
         val ch = input[0]
         if (ch !in 'a'..'z') return input
-        return if (shouldCapitalizeNextChar()) {
-            ch.titlecaseChar().toString()
-        } else {
-            input
+
+        val mode = preferences.getAutoCapitalizationMode()
+        return when (mode) {
+            "none" -> input
+            "words" -> ch.titlecaseChar().toString()  // Capitalize every word
+            "sentences" -> if (shouldCapitalizeNextChar()) ch.titlecaseChar().toString() else input
+            "all" -> ch.titlecaseChar().toString()  // Same as words for individual chars
+            else -> input
         }
     }
 
@@ -1156,6 +1258,50 @@ class KaviInputMethodService : InputMethodService() {
 
     private fun isSentenceTerminator(char: Char): Boolean {
         return char == '.' || char == '!' || char == '?'
+    }
+
+    private fun applyUserThemeFallback() {
+        val variantName = preferences.getThemeVariant()
+        val variant = runCatching { ThemeVariant.valueOf(variantName) }.getOrElse { ThemeVariant.DEFAULT }
+        val isDark = preferences.isDarkModeEnabled() ?: dynamicThemeManager.isDarkMode.value
+        android.util.Log.d("KaviIME", "applyUserThemeFallback: variant=$variant, isDark=$isDark")
+
+        val materialTheme = ThemePresets.getByVariant(variant, isDark)
+        val keyboardScheme = materialTheme.toKeyboardColorScheme()
+
+        // Set BOTH dynamic and fallback to ensure colors are applied
+        KeyboardDesignSystem.setDynamicColorScheme(keyboardScheme)
+        KeyboardDesignSystem.setFallbackColorScheme(keyboardScheme)
+
+        android.util.Log.d("KaviIME", "Applied theme: keyBg=${Integer.toHexString(keyboardScheme.keyBackground)}")
+
+        // Force refresh all views
+        keyboardView?.refreshColors()
+        suggestionStripView?.refreshColors()
+        clipboardStripView?.refreshColors()
+        keyboardRootContainer?.setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
+        suggestionSeparator?.setBackgroundColor(KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC)
+        emojiBoardView?.refreshColors()
+    }
+
+    private fun selectSwipeWord(rawWord: String, suggestions: List<Suggestion>): String {
+        val cleaned = rawWord.trim()
+        if (cleaned.isEmpty()) return cleaned
+        val bestSuggestion = suggestions.firstOrNull { it.word.isNotBlank() }?.word
+        if (!bestSuggestion.isNullOrBlank()) {
+            return bestSuggestion
+        }
+        val lettersOnly = cleaned.filter { it.isLetter() }
+        return lettersOnly.ifEmpty { cleaned }
+    }
+
+    private fun commitSwipeWord(word: String) {
+        val ic = currentInputConnection ?: return
+        ic.commitText(word, 1)
+        ic.commitText(" ", 1)
+        markInternalEdit()
+        suggestionEngine.onWordTyped(word)
+        updateSuggestions()
     }
 
     /**
@@ -1593,9 +1739,72 @@ class KaviInputMethodService : InputMethodService() {
         // Insert emoji
         inputConnectionHandler.commitText(emoji)
         markInternalEdit()
-        
+
         // Hide emoji board and show keyboard
         hideEmojiBoard()
+    }
+
+    /**
+     * Show emoji skin tone selector popup
+     */
+    private fun showEmojiSkinToneSelector(baseEmoji: String) {
+        val variants = com.kannada.kavi.ui.popupviews.EmojiSkinToneHandler.getSkinToneVariants(baseEmoji)
+        if (variants.isEmpty()) {
+            // If no skin tone variants, just insert the base emoji
+            val ic = currentInputConnection ?: return
+            inputConnectionHandler.commitText(baseEmoji)
+            markInternalEdit()
+            return
+        }
+
+        // Create popup with emoji variants
+        val popupView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            val padding = (8 * resources.displayMetrics.density).toInt()
+            setPadding(padding, padding / 2, padding, padding / 2)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 12f * resources.displayMetrics.density
+                setColor(com.kannada.kavi.features.themes.KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC)
+            }
+        }
+
+        variants.forEach { tone ->
+            val emojiButton = android.widget.TextView(this).apply {
+                text = tone.emoji
+                textSize = 24f
+                setPadding(
+                    (6 * resources.displayMetrics.density).toInt(),
+                    (4 * resources.displayMetrics.density).toInt(),
+                    (6 * resources.displayMetrics.density).toInt(),
+                    (4 * resources.displayMetrics.density).toInt()
+                )
+                setOnClickListener {
+                    val ic = currentInputConnection ?: return@setOnClickListener
+                    finalizePhoneticBuffer()
+                    resetPhoneticState()
+                    inputConnectionHandler.commitText(tone.emoji)
+                    markInternalEdit()
+                    emojiPopup?.dismiss()
+                    emojiPopup = null
+                }
+            }
+            popupView.addView(emojiButton, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+
+        emojiPopup?.dismiss()
+        emojiPopup = android.widget.PopupWindow(
+            popupView,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            keyboardView?.let {
+                showAsDropDown(it, 0, -(200 * resources.displayMetrics.density).toInt())
+            }
+        }
     }
     
     /**

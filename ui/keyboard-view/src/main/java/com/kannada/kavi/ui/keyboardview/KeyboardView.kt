@@ -9,7 +9,10 @@ import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import androidx.annotation.DrawableRes
+import androidx.core.content.ContextCompat
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -19,6 +22,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.View.MeasureSpec
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
@@ -29,6 +34,9 @@ import com.kannada.kavi.core.layout.models.Key
 import com.kannada.kavi.core.layout.models.KeyboardRow
 import com.kannada.kavi.features.themes.KeyboardDesignSystem
 import kotlin.math.min
+import kotlin.math.max
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * KeyboardView - The Visual Keyboard Component
@@ -153,9 +161,15 @@ class KeyboardView @JvmOverloads constructor(
     private var swipePathView: SwipePathView? = null
     private var isSwipeTypingEnabled = false
     private var isGesturesEnabled = false
+    private var isSwipeDeleteEnabled = true
+    private var isSwipeCursorEnabled = true
+    private var swipeSensitivity = 1.0f  // Default normal sensitivity
 
     // Swipe word callback - will be set by IME service
     private var onSwipeWord: ((String) -> Unit)? = null
+    private var commaEmojiLongPressListener: (() -> Unit)? = null
+    private var emojiLongPressListener: ((String) -> Unit)? = null
+    private var customLongPressHandled = false
 
     // Material You elevation shadow (very subtle, tonal)
     private val keyShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -201,6 +215,16 @@ class KeyboardView @JvmOverloads constructor(
         strokeWidth = 2.5f  // Material outlined icon standard stroke (will be scaled by density)
     }
 
+    // Material You icon drawables
+    private var iconEnter: Drawable? = null
+    private var iconEnterSend: Drawable? = null
+    private var iconEnterSearch: Drawable? = null
+    private var iconEnterDone: Drawable? = null
+    private var iconDelete: Drawable? = null
+    private var iconShift: Drawable? = null
+    private var iconLanguage: Drawable? = null
+    private var iconEmoji: Drawable? = null
+
     private val specialKeyTypes = setOf(
         com.kannada.kavi.core.layout.models.KeyType.SHIFT,
         com.kannada.kavi.core.layout.models.KeyType.DELETE,
@@ -233,6 +257,9 @@ class KeyboardView @JvmOverloads constructor(
 
     // Key listener (sends key presses to InputMethodService)
     private var keyPressListener: ((Key) -> Unit)? = null
+
+    // Swipe gesture listener for cursor movement and selection
+    private var swipeGestureListener: ((String, Int) -> Unit)? = null
 
     // Keyboard dimensions
     private var keyHeight = 0f
@@ -267,8 +294,32 @@ class KeyboardView @JvmOverloads constructor(
         // Set background
         setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
 
+        // Load Material You icon drawables
+        loadIconDrawables()
+
         // Initialize swipe gesture detector
         initializeSwipeComponents()
+    }
+
+    /**
+     * Load Material You icon drawables from resources
+     */
+    private fun loadIconDrawables() {
+        iconEnter = loadIconDrawable(R.drawable.keyboard_return_24)
+        iconEnterSend = loadIconDrawable(R.drawable.send_24)
+        iconEnterSearch = loadIconDrawable(R.drawable.search_24)
+        iconEnterDone = loadIconDrawable(R.drawable.check_24)
+        iconDelete = loadIconDrawable(R.drawable.backspace_24)
+        iconShift = loadIconDrawable(R.drawable.arrow_upward_24)
+        iconLanguage = loadIconDrawable(R.drawable.language)
+        iconEmoji = loadIconDrawable(R.drawable.mood_24)
+    }
+    
+    /**
+     * Load a drawable by id, returning null if not found
+     */
+    private fun loadIconDrawable(@DrawableRes resId: Int): Drawable? {
+        return ContextCompat.getDrawable(context, resId)?.mutate()
     }
 
     /**
@@ -278,38 +329,171 @@ class KeyboardView @JvmOverloads constructor(
         // Create swipe gesture detector
         swipeGestureDetector = SwipeGestureDetector().apply {
             setDensity(density)
+            setSensitivity(swipeSensitivity)  // Apply sensitivity setting
             setListener(object : SwipeGestureDetector.GestureListener {
                 override fun onTap(x: Float, y: Float) {
-                    // Handle as normal tap
-                    handleTouchDown(x, y)
-                    handleTouchUp(x, y)
+                    // Tap is handled by normal touch flow - do nothing here
+                    // The detector returns false for taps, so normal handling continues
                 }
 
                 override fun onLongPress(x: Float, y: Float) {
-                    // Handle long press
-                    handleTouchDown(x, y)
+                    // Handle long press for popup
+                    val keyBound = findKeyAt(x, y)
+                    if (keyBound != null && keyBound.key.showPopup && !keyBound.key.longPressKeys.isNullOrEmpty()) {
+                        // Show popup for long press - will be handled by the popup system
+                        pressedKey = keyBound.key
+                        longPressHandler.removeCallbacksAndMessages(null)
+                        // The long press popup is shown by the scheduleLongPress system
+                        invalidate()
+                    }
                 }
 
                 override fun onSwipeStart(x: Float, y: Float) {
                     // Start swipe path visualization
+                    // Coordinates are already in KeyboardView's coordinate space
+                    // Validate coordinates are within bounds
+                    if (x < 0 || x > width || y < 0 || y > height) {
+                        android.util.Log.w("KeyboardView", "onSwipeStart: Coordinates out of bounds: ($x, $y) in view ${width}x${height}")
+                    }
+
+                    // Ensure SwipePathView is aligned with our bounds
+                    swipePathView?.let { pathView ->
+                        // Verify SwipePathView size matches KeyboardView
+                        if (pathView.width != width || pathView.height != height) {
+                            android.util.Log.w("KeyboardView", "SwipePathView size mismatch: view=$width x $height, pathView=${pathView.width} x ${pathView.height}")
+                        }
+                    }
+
+                    // Log coordinate mapping for debugging
+                    val key = findKeyAt(x, y)
+                    android.util.Log.d("KeyboardView", "SwipeStart at ($x, $y) - key: ${key?.key?.label ?: "none"}")
+
                     swipePathView?.startSwipe(x, y)
                 }
 
                 override fun onSwipeMove(x: Float, y: Float, path: List<android.graphics.PointF>) {
                     // Update swipe path visualization
                     swipePathView?.updatePath(x, y)
+
+                    // Track which key is being swiped over
+                    findKeyAt(x, y)?.let { keyBound ->
+                        val key = keyBound.key
+                        val keyText = key.output.ifBlank { key.label }
+
+                        if (!isSpecialKey(key) && keyText.isNotEmpty()) {
+                            val sequence = swipeGestureDetector?.getKeySequence() ?: emptyList()
+                            val lastKey = sequence.lastOrNull()
+
+                            // Spatial deduplication: only skip if we're still over the same physical key
+                            val shouldAdd = if (keyText == lastKey) {
+                                // Check if we've moved to a different physical key with same label
+                                // This can happen with duplicate letters (like 'l' in 'hello')
+                                val lastAddedAt = swipeGestureDetector?.getLastKeyAddedAt()
+                                if (lastAddedAt != null) {
+                                    val distanceMoved = kotlin.math.sqrt(
+                                        (x - lastAddedAt.x) * (x - lastAddedAt.x) +
+                                        (y - lastAddedAt.y) * (y - lastAddedAt.y)
+                                    )
+                                    // Add if we've moved significantly (more than half key width)
+                                    distanceMoved > keyBound.bounds.width() * 0.5f
+                                } else {
+                                    true
+                                }
+                            } else {
+                                true  // Different letter, always add
+                            }
+
+                            if (shouldAdd) {
+                                swipeGestureDetector?.addKeyToSequence(keyText)
+                                swipeGestureDetector?.setLastKeyAddedAt(android.graphics.PointF(x, y))
+                                android.util.Log.d("KeyboardView", "Added key: '$keyText' at ($x, $y)")
+                            }
+                        }
+                    }
                 }
 
                 override fun onSwipeEnd(gesture: SwipeGesture) {
                     // End swipe and extract text
                     swipePathView?.endSwipe()
 
-                    // Only handle swipe typing gestures
-                    if (gesture.type == SwipeType.SWIPE_TYPE) {
-                        // Get letters from path
-                        val word = extractWordFromPath(gesture.path)
-                        if (word.isNotEmpty()) {
-                            onSwipeWord?.invoke(word)
+                    // Handle different gesture types
+                    when (gesture.type) {
+                        SwipeType.SWIPE_TYPE -> {
+                            if (!isSwipeTypingEnabled) return@onSwipeEnd
+                            // Extract word using probabilistic detection
+                            val word = extractWordFromGesture(gesture)
+                            android.util.Log.d("KeyboardView", "SWIPE_TYPE: extracted word='$word'")
+                            if (word.isNotEmpty()) {
+                                onSwipeWord?.invoke(word)
+                            }
+                        }
+                        SwipeType.SWIPE_DELETE -> {
+                            if (!isSwipeDeleteEnabled) return@onSwipeEnd
+                            // Quick left swipe - delete word
+                            android.util.Log.d("KeyboardView", "SWIPE_DELETE: deleting word")
+                            // Use swipe gesture listener for word deletion
+                            swipeGestureListener?.invoke("delete_word", 1)
+                        }
+                        SwipeType.SWIPE_CURSOR -> {
+                            val startKeyType = findKeyAt(gesture.startX, gesture.startY)?.key?.type
+                            val startsOnSpace = startKeyType == com.kannada.kavi.core.layout.models.KeyType.SPACE
+                            val startsNearBottom = gesture.startY >= height * 0.65f
+                            if (isSwipeTypingEnabled && !startsOnSpace && !startsNearBottom) {
+                                android.util.Log.d("KeyboardView", "SWIPE_CURSOR fallback to swipe typing - start key=$startKeyType")
+                                val word = extractWordFromGesture(gesture)
+                                if (word.isNotEmpty()) {
+                                    onSwipeWord?.invoke(word)
+                                }
+                                return@onSwipeEnd
+                            }
+                            if (!isSwipeCursorEnabled) {
+                                android.util.Log.d("KeyboardView", "SWIPE_CURSOR: disabled, ignoring")
+                                return@onSwipeEnd
+                            }
+                            // Horizontal swipe - move cursor or select text
+                            val distancePx = gesture.endX - gesture.startX
+                            val distanceDp = distancePx / resources.displayMetrics.density
+                            
+                            // Calculate steps: 1 step per ~15dp of movement (more responsive)
+                            // Ensure at least 1 step for any meaningful swipe
+                            val steps = when {
+                                distanceDp > 0 -> max(1, (distanceDp / 15f).toInt())
+                                distanceDp < 0 -> min(-1, (distanceDp / 15f).toInt())
+                                else -> 0
+                            }
+
+                            // Check if this is a selection gesture (long press + swipe)
+                            val isSelection = gesture.duration > 500 // Long press for selection
+
+                            android.util.Log.d("KeyboardView", "SWIPE_CURSOR: dist=${distanceDp}dp, steps=$steps, selection=$isSelection, enabled=$isSwipeCursorEnabled")
+                            
+                            if (isSelection) {
+                                android.util.Log.d("KeyboardView", "SWIPE_SELECT: selecting ${abs(steps)} characters")
+                                if (steps > 0) {
+                                    swipeGestureListener?.invoke("select_right", steps)
+                                } else if (steps < 0) {
+                                    swipeGestureListener?.invoke("select_left", -steps)
+                                }
+                            } else {
+                                android.util.Log.d("KeyboardView", "SWIPE_CURSOR: moving cursor $steps steps")
+                                if (steps > 0) {
+                                    swipeGestureListener?.invoke("cursor_right", steps)
+                                } else if (steps < 0) {
+                                    swipeGestureListener?.invoke("cursor_left", -steps)
+                                }
+                            }
+                        }
+                        SwipeType.SWIPE_SHIFT -> {
+                            // Quick upward swipe - toggle shift
+                            android.util.Log.d("KeyboardView", "SWIPE_SHIFT: toggling shift")
+                            // Find shift key and trigger it
+                            rows.flatMap { it.keys }.find { it.type == com.kannada.kavi.core.layout.models.KeyType.SHIFT }?.let { shiftKey ->
+                                keyPressListener?.invoke(shiftKey)
+                            }
+                        }
+                        SwipeType.QUICK_SWIPE -> {
+                            // Generic quick swipe - could be used for other actions
+                            android.util.Log.d("KeyboardView", "QUICK_SWIPE: direction=${gesture.direction}")
                         }
                     }
                 }
@@ -323,23 +507,264 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Extract word from swipe path by checking which keys were touched
+     * Check if a key is a special key (not a letter)
+     */
+    private fun isSpecialKey(key: Key): Boolean {
+        // Check if it's not a character key (using isCharacter property from Key)
+        return !key.isCharacter || key.label in listOf("123", "?123", "abc", "ABC", "⇧")
+    }
+
+    /**
+     * Extracts a swipe word using the recorded key sequence, falling back to path sampling.
+     */
+    private fun extractWordFromSwipe(path: List<android.graphics.PointF>): String {
+        val sequenceWord = swipeGestureDetector
+            ?.getKeySequence()
+            ?.let { buildWordFromKeySequence(it) }
+            .orEmpty()
+
+        if (sequenceWord.isNotEmpty()) {
+            android.util.Log.d("KeyboardView", "Sequence-based swipe word detected='$sequenceWord'")
+            return sequenceWord
+        }
+
+        return extractWordFromPath(path)
+    }
+
+    /**
+     * Builds a word from the collected key sequence (already filtered to character keys).
+     */
+    private fun buildWordFromKeySequence(sequence: List<String>): String {
+        if (sequence.isEmpty()) return ""
+
+        val letters = mutableListOf<String>()
+        var lastValue: String? = null
+
+        sequence.forEach { raw ->
+            val value = raw.trim()
+            if (value.isNotEmpty() && value != lastValue) {
+                letters.add(value)
+                lastValue = value
+            }
+        }
+
+        return if (letters.size >= 2) letters.joinToString("") else ""
+    }
+
+    /**
+     * Extract word from swipe path - PRACTICAL APPROACH
+     * Focus on what actually works: start/end keys + path sampling
      */
     private fun extractWordFromPath(path: List<android.graphics.PointF>): String {
+        if (path.size < 3) {
+            android.util.Log.d("KeyboardView", "Path too short: ${path.size} points")
+            return ""  // Too short for a word
+        }
+
         val letters = mutableListOf<String>()
         var lastKey: Key? = null
+        var keyChangeCount = 0
 
-        path.forEach { point ->
-            findKeyAt(point.x, point.y)?.let { keyBound ->
-                // Only add if it's a different key than last
-                if (keyBound.key != lastKey && keyBound.key.label.length == 1) {
-                    letters.add(keyBound.key.label)
-                    lastKey = keyBound.key
+        // Path points are already in view coordinates (from SwipeGestureDetector)
+        // No coordinate translation needed - use points directly
+        
+        // Use distance-based sampling to ensure we don't miss keys during fast swipes
+        // This ensures we check points at regular spatial intervals, not just count intervals
+        val sampledPoints = mutableListOf<Pair<Int, android.graphics.PointF>>()
+        sampledPoints.add(0 to path[0])  // Always include start point
+
+        // Calculate minimum sample distance based on average key width
+        val avgKeyWidth = if (keyBounds.isNotEmpty()) {
+            keyBounds.map { it.bounds.width() }.average().toFloat()
+        } else {
+            50f * density  // Default to 50dp if no keys loaded
+        }
+        val minSampleDistance = avgKeyWidth * 0.3f  // Sample at least every 30% of key width
+
+        var lastSampledPoint = path[0]
+        for (i in 1 until path.size - 1) {
+            val point = path[i]
+            val dx = point.x - lastSampledPoint.x
+            val dy = point.y - lastSampledPoint.y
+            val distance = sqrt(dx * dx + dy * dy)
+
+            // Sample if we've moved far enough OR this is a direction change
+            if (distance >= minSampleDistance) {
+                sampledPoints.add(i to point)
+                lastSampledPoint = point
+            }
+        }
+
+        // Always include end point
+        if (path.size > 1) {
+            sampledPoints.add(path.size - 1 to path.last())
+        }
+
+        android.util.Log.d("KeyboardView", "Extracting word: path=${path.size} pts, sampled=${sampledPoints.size} pts, min dist=${minSampleDistance}px")
+
+        // Track keys with their positions to avoid duplicates and improve accuracy
+        val keyPositions = mutableMapOf<Key, Int>()  // Key -> first occurrence index
+        var lastKeyPosition: android.graphics.PointF? = null
+
+        // Store avgKeyWidth for use in spatial deduplication
+        val keyWidth = avgKeyWidth
+
+         for ((originalIndex, point) in sampledPoints) {
+             
+             // Use point coordinates directly (already in view space from SwipeGestureDetector)
+             // Ensure coordinates are within view bounds
+             val clampedX = point.x.coerceIn(0f, width.toFloat())
+             val clampedY = point.y.coerceIn(0f, height.toFloat())
+             
+             findKeyAt(clampedX, clampedY)?.let { keyBound ->
+                 val key = keyBound.key
+                 val keyText = key.output.ifBlank { key.label }
+                 
+                 // Only process letter keys (single character, not special)
+                 if (!isSpecialKey(key) && keyText.isNotEmpty()) {
+                     // Better spatial deduplication: only add if we've moved to a different key
+                     // OR we've returned to a key after visiting another one
+                     val isNewKey = key != lastKey
+
+                     // Check spatial distance from last key position to avoid duplicates
+                     val hasSpatiallyMoved = if (lastKeyPosition != null) {
+                         val spatialDx = clampedX - lastKeyPosition!!.x
+                         val spatialDy = clampedY - lastKeyPosition!!.y
+                         val spatialDistance = sqrt(spatialDx * spatialDx + spatialDy * spatialDy)
+                         spatialDistance > keyWidth * 0.3f  // Moved at least 30% of key width for better detection
+                     } else {
+                         true  // First key, always add
+                     }
+
+                     if (isNewKey && hasSpatiallyMoved) {
+                         letters.add(keyText)
+                         keyPositions[key] = originalIndex
+                         lastKey = key
+                         lastKeyPosition = android.graphics.PointF(clampedX, clampedY)
+                         keyChangeCount++
+                         android.util.Log.d("KeyboardView", "Added letter: '$keyText' at index $originalIndex, pos=($clampedX, $clampedY), bounds=${keyBound.bounds}")
+                     }
+                 }
+             } ?: run {
+                 // Log when point doesn't match any key (helps debug coordinate issues)
+                 if (sampledPoints.size < 50 && originalIndex % 5 == 0) {  // Limit logging to avoid spam
+                     android.util.Log.v("KeyboardView", "No key found at path point $originalIndex: ($clampedX, $clampedY)")
+                 }
+             }
+         }
+
+         // Also check the last point explicitly (might be missed by sampling)
+         if (path.isNotEmpty()) {
+             val lastPoint = path.last()
+             val clampedX = lastPoint.x.coerceIn(0f, width.toFloat())
+             val clampedY = lastPoint.y.coerceIn(0f, height.toFloat())
+             
+             findKeyAt(clampedX, clampedY)?.let { keyBound ->
+                 val key = keyBound.key
+                 val keyText = key.output.ifBlank { key.label }
+                 if (!isSpecialKey(key) && key != lastKey && keyText.isNotEmpty()) {
+                     letters.add(keyText)
+                     keyChangeCount++
+                     android.util.Log.d("KeyboardView", "Added final letter: '$keyText' at ($clampedX, $clampedY)")
+                 }
+             }
+         }
+
+        val word = if (keyChangeCount >= 2) letters.joinToString("") else ""
+        android.util.Log.d("KeyboardView", "Extracted word: '$word' from $keyChangeCount unique keys (path had ${path.size} points)")
+        return word
+    }
+
+    /**
+     * Extract word from swipe gesture using probabilistic key detection
+     * Based on FlorisBoard's statistical approach with resampled paths
+     */
+    private fun extractWordFromGesture(gesture: SwipeGesture): String {
+        // Use the resampled path for consistent analysis
+        val resampledPath = gesture.resampledPath
+        if (resampledPath.size < SwipeAlgorithms.RESAMPLE_POINTS / 2) {
+            android.util.Log.d("KeyboardView", "Resampled path too short: ${resampledPath.size} points")
+            return extractWordFromPath(gesture.path)  // Fallback to old method
+        }
+
+        val keyProbabilities = mutableMapOf<Int, MutableMap<Key, Float>>()  // Sample index -> Key probabilities
+        val detectedKeys = mutableListOf<Pair<Key, Float>>()  // Key sequence with probabilities
+
+        // For each resampled point, calculate probability for all nearby keys
+        resampledPath.forEachIndexed { index, point ->
+            val probabilities = mutableMapOf<Key, Float>()
+
+            // Convert normalized point back to view coordinates
+            val viewPoint = SwipeAlgorithms.denormalizePoint(
+                point, 0f, 0f, keyboardWidth, keyboardHeight
+            )
+
+            // Check all keys for probability (not just the closest one)
+            keyBounds.forEach { keyBound ->
+                val key = keyBound.key
+                if (!isSpecialKey(key) && key.output.isNotEmpty()) {
+                    // Calculate key center in normalized coordinates
+                    val keyCenterX = (keyBound.bounds.centerX() / keyboardWidth)
+                    val keyCenterY = (keyBound.bounds.centerY() / keyboardHeight)
+                    val keyCenter = SwipeAlgorithms.NormalizedPoint(keyCenterX, keyCenterY)
+
+                    // Calculate key dimensions in normalized coordinates
+                    val keyWidth = keyBound.bounds.width() / keyboardWidth
+                    val keyHeight = keyBound.bounds.height() / keyboardHeight
+
+                    // Calculate probability using Gaussian distribution
+                    val probability = SwipeAlgorithms.keyHitProbability(
+                        point, keyCenter, keyWidth, keyHeight
+                    )
+
+                    if (probability > 0.01f) {  // Threshold to avoid noise
+                        probabilities[key] = probability
+                    }
+                }
+            }
+
+            keyProbabilities[index] = probabilities
+        }
+
+        // Extract key sequence using Viterbi-like algorithm
+        // Find the most probable key sequence considering transitions
+        val keySequence = mutableListOf<String>()
+        var lastKey: Key? = null
+
+        for (i in resampledPath.indices) {
+            val probabilities = keyProbabilities[i] ?: continue
+
+            if (probabilities.isNotEmpty()) {
+                // Get the most probable key at this position
+                val (bestKey, bestProb) = probabilities.maxByOrNull { it.value } ?: continue
+
+                // Add key if it's different from the last one (avoid duplicates)
+                // Or if probability is very high (strong hit)
+                if (bestKey != lastKey || bestProb > 0.8f) {
+                    val keyText = bestKey.output.ifBlank { bestKey.label }
+                    if (keyText.isNotEmpty() && (bestKey != lastKey)) {
+                        keySequence.add(keyText)
+                        detectedKeys.add(bestKey to bestProb)
+                        lastKey = bestKey
+
+                        android.util.Log.d("KeyboardView",
+                            "Probabilistic detection: '$keyText' at sample $i with prob=${bestProb}")
+                    }
                 }
             }
         }
 
-        return letters.joinToString("")
+        // Build word from key sequence
+        val word = if (keySequence.size >= 2) keySequence.joinToString("") else ""
+        android.util.Log.d("KeyboardView",
+            "Probabilistic extraction: '$word' from ${keySequence.size} keys (${resampledPath.size} samples)")
+
+        // If probabilistic method fails, fallback to old method
+        return if (word.isEmpty() && gesture.path.size > 3) {
+            extractWordFromPath(gesture.path)
+        } else {
+            word
+        }
     }
 
     /**
@@ -356,11 +781,13 @@ class KeyboardView @JvmOverloads constructor(
     /**
      * Apply colors to all Paint objects from design system
      * Uses dynamic colors if available, otherwise falls back to static colors
+     * OPTIMIZATION: Pre-configure all Paint objects to avoid modifications during onDraw
      */
     private fun applyColors() {
         val density = resources.displayMetrics.density
 
-        // Apply colors from design system (dynamic if available)
+        // Re-read colors from design system each time to get latest values
+        // This ensures we get the updated colors after theme changes
         keyBackgroundPaint.color = KeyboardDesignSystem.Colors.KEY_BACKGROUND_DYNAMIC
         keyPressedPaint.color = KeyboardDesignSystem.Colors.KEY_PRESSED_DYNAMIC
         keySelectedPaint.color = KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND_DYNAMIC
@@ -370,34 +797,65 @@ class KeyboardView @JvmOverloads constructor(
         actionKeyPressedPaint.color = KeyboardDesignSystem.Colors.ACTION_KEY_PRESSED_DYNAMIC
         spacebarPaint.color = KeyboardDesignSystem.Colors.SPACEBAR_TEXT_DYNAMIC
 
+        android.util.Log.d("KeyboardView", "applyColors: keyBackground=${Integer.toHexString(keyBackgroundPaint.color)}, " +
+            "specialKey=${Integer.toHexString(specialKeyPaint.color)}, " +
+            "actionKey=${Integer.toHexString(actionKeyPaint.color)}")
+
         keyBorderPaint.apply {
             color = 0x00000000.toInt()  // No border
             strokeWidth = 0f
         }
 
-        iconStrokePaint.strokeWidth = KeyboardDesignSystem.Dimensions.ICON_STROKE_WIDTH * density
+        iconStrokePaint.apply {
+            strokeWidth = KeyboardDesignSystem.Dimensions.ICON_STROKE_WIDTH * density
+            // Pre-configure all icon stroke attributes
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            isAntiAlias = true
+        }
 
+        // Pre-configure label paint completely
         labelPaint.apply {
             color = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
             textSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.KEY_LABEL)
             typeface = android.graphics.Typeface.DEFAULT
             isSubpixelText = true
             isLinearText = true
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
         }
 
+        // Pre-configure hint paint
         hintPaint.apply {
             color = KeyboardDesignSystem.Colors.KEY_HINT_TEXT_DYNAMIC
             textSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.KEY_HINT)
+            isAntiAlias = true
+            isSubpixelText = true
         }
 
+        // Pre-configure spacebar paint
         spaceBarPaint.apply {
             color = KeyboardDesignSystem.Colors.SPACEBAR_TEXT_DYNAMIC
             textSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.SPACEBAR)
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+            isSubpixelText = true
         }
 
-        ripplePaint.color = 0x1F000000.toInt()  // Light ripple
+        // Pre-configure ripple paint
+        ripplePaint.apply {
+            color = 0x1F000000.toInt()  // Light ripple
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
 
-        keyShadowPaint.color = 0x00000000.toInt()  // No shadow
+        // Pre-configure shadow paint with proper opacity (5% for subtle elevation)
+        keyShadowPaint.apply {
+            color = ColorUtils.setAlphaComponent(0xFF000000.toInt(), 13)  // ~5% opacity (13/255)
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
 
         // Apply chip-style spacing from design system, scaled by heightPercentage
         keyHorizontalSpacing = KeyboardDesignSystem.Dimensions.KEY_HORIZONTAL_GAP * density
@@ -406,16 +864,32 @@ class KeyboardView @JvmOverloads constructor(
         rowPaddingStart = padding.left
         rowPaddingEnd = padding.right
 
+        // Enable hardware acceleration for smooth animations
+        // Use software layer only when necessary for specific operations
         setLayerType(LAYER_TYPE_HARDWARE, null)
     }
     
     /**
      * Refresh colors (call when dynamic theme changes)
+     * Does NOT trigger layout recalculation to avoid breaking suggestion bar
      */
     fun refreshColors() {
+        android.util.Log.d("KeyboardView", "refreshColors() called")
+
+        // Force Paint objects to update by recreating them with new colors
         applyColors()
-        setBackgroundColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
+
+        // Update background color
+        val newBgColor = KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC
+        setBackgroundColor(newBgColor)
+        android.util.Log.d("KeyboardView", "Background color set to: ${Integer.toHexString(newBgColor)}")
+
+        // Force complete redraw of the view
         invalidate()
+        requestLayout()
+        postInvalidateOnAnimation()
+
+        android.util.Log.d("KeyboardView", "Colors refreshed and view invalidated")
     }
 
     /**
@@ -424,13 +898,31 @@ class KeyboardView @JvmOverloads constructor(
      * @param rows List of keyboard rows from LayoutManager
      */
     fun setKeyboard(rows: List<KeyboardRow>) {
-        android.util.Log.e("KeyboardView", "===== SET KEYBOARD CALLED with ${rows.size} rows =====")
         android.util.Log.d("KeyboardView", "setKeyboard: Old rows count = ${this.rows.size}, New rows count = ${rows.size}")
+        val rowsChanged = this.rows != rows
         this.rows = rows
-        calculateKeyBounds()
-        invalidate() // Request redraw
-        requestLayout() // Force layout recalculation
-        android.util.Log.e("KeyboardView", "===== SET KEYBOARD COMPLETE - invalidate() and requestLayout() called =====")
+        
+        if (rowsChanged) {
+            // CRITICAL: Recalculate key bounds when layout changes
+            // This ensures gesture tracking aligns with visual layout
+            // Must happen after layout is measured (width/height > 0)
+            if (width > 0 && height > 0) {
+                calculateKeyBounds()
+                android.util.Log.d("KeyboardView", "setKeyboard: Key bounds recalculated (${keyBounds.size} keys)")
+                
+                // Update swipe key bounds if swipe typing is enabled
+                if (isSwipeTypingEnabled) {
+                    updateSwipeKeyBounds()
+                }
+                
+                invalidate() // Request redraw
+            } else {
+                // Layout not measured yet - will recalculate in onSizeChanged
+                android.util.Log.d("KeyboardView", "setKeyboard: Layout not measured yet, will recalculate in onSizeChanged")
+                requestLayout() // Trigger measurement
+            }
+            android.util.Log.d("KeyboardView", "setKeyboard: Rows updated successfully")
+        }
     }
 
     /**
@@ -492,18 +984,64 @@ class KeyboardView @JvmOverloads constructor(
      * Enable or disable swipe typing
      */
     fun setSwipeTypingEnabled(enabled: Boolean) {
+        android.util.Log.d("KeyboardView", "setSwipeTypingEnabled: $enabled")
         isSwipeTypingEnabled = enabled
-        if (enabled) {
-            // Update key bounds for swipe word predictor
-            updateSwipeKeyBounds()
+
+        // Initialize swipe components if not already done
+        if (enabled && swipeGestureDetector == null) {
+            android.util.Log.d("KeyboardView", "Initializing swipe components")
+            initializeSwipeComponents()
         }
+
+        if (enabled) {
+            // Update key bounds for swipe word predictor after layout
+            // Use postDelayed to avoid interfering with current layout pass
+            postDelayed({
+                if (width > 0 && height > 0) {
+                    updateSwipeKeyBounds()
+                }
+            }, 50) // Small delay to let layout settle
+        } else {
+            swipePathView?.cancelSwipe()
+        }
+        
+        android.util.Log.d("KeyboardView", "Swipe typing enabled: $isSwipeTypingEnabled, detector: ${swipeGestureDetector != null}")
+        // Don't invalidate or requestLayout - this can mess up suggestion bar
+        // Just update internal state
     }
 
     /**
      * Enable or disable gestures
      */
     fun setGesturesEnabled(enabled: Boolean) {
+        android.util.Log.d("KeyboardView", "setGesturesEnabled: $enabled")
         isGesturesEnabled = enabled
+
+        // Initialize swipe components if not already done
+        if (enabled && swipeGestureDetector == null) {
+            android.util.Log.d("KeyboardView", "Initializing swipe components for gestures")
+            initializeSwipeComponents()
+        }
+        
+        android.util.Log.d("KeyboardView", "Gestures enabled: $isGesturesEnabled, detector: ${swipeGestureDetector != null}")
+        // Don't invalidate or requestLayout - this can mess up suggestion bar
+        // Just update internal state
+    }
+
+    /**
+     * Set swipe typing sensitivity
+     */
+    fun setSwipeSensitivity(sensitivity: Float) {
+        swipeSensitivity = sensitivity
+        swipeGestureDetector?.setSensitivity(sensitivity)
+    }
+
+    fun setSwipeToDeleteEnabled(enabled: Boolean) {
+        isSwipeDeleteEnabled = enabled
+    }
+
+    fun setSwipeCursorEnabled(enabled: Boolean) {
+        isSwipeCursorEnabled = enabled
     }
 
     /**
@@ -511,6 +1049,14 @@ class KeyboardView @JvmOverloads constructor(
      */
     fun setSwipePathView(pathView: SwipePathView) {
         swipePathView = pathView
+    }
+
+    fun setOnCommaEmojiLongPressListener(listener: (() -> Unit)?) {
+        commaEmojiLongPressListener = listener
+    }
+
+    fun setOnEmojiLongPressListener(listener: ((String) -> Unit)?) {
+        emojiLongPressListener = listener
     }
 
     /**
@@ -521,18 +1067,41 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Update key bounds for swipe typing (no-op for now)
+     * Set the swipe gesture listener for cursor and selection
+     */
+    fun setOnSwipeGestureListener(listener: (String, Int) -> Unit) {
+        swipeGestureListener = listener
+    }
+
+    /**
+     * Update key bounds for swipe typing
+     * Ensures gesture tracking uses current key layout
      */
     private fun updateSwipeKeyBounds() {
-        // Placeholder - will be used when integrating SwipeWordPredictor
+        // Key bounds are already calculated in calculateKeyBounds()
+        // Just verify they're valid for swipe detection
+        if (keyBounds.isEmpty()) {
+            android.util.Log.w("KeyboardView", "updateSwipeKeyBounds: Key bounds are empty!")
+            return
+        }
+        
+        android.util.Log.d("KeyboardView", "updateSwipeKeyBounds: ${keyBounds.size} keys ready for swipe detection")
+        
+        // Log key bounds for debugging (first few keys only)
+        keyBounds.take(5).forEachIndexed { index, keyBound ->
+            android.util.Log.v("KeyboardView", "Key $index '${keyBound.key.label}': bounds=${keyBound.bounds}")
+        }
     }
 
     /**
      * Calculate bounds (position and size) for each key
      *
-     * This is like creating a blueprint before building.
-     * We figure out where each key should be drawn.
-     * Now uses theme spacing values for Material You design.
+     * CRITICAL: This must be called whenever:
+     * - Layout changes (setKeyboard)
+     * - Size changes (onSizeChanged)
+     * - Height percentage changes
+     *
+     * This ensures gesture tracking coordinates match visual layout
      *
      * IMPORTANT: Keys must align in a proper grid across all rows
      * Similar to Gboard and the reference design
@@ -540,7 +1109,16 @@ class KeyboardView @JvmOverloads constructor(
     private fun calculateKeyBounds() {
         keyBounds.clear()
 
-        if (rows.isEmpty()) return
+        if (rows.isEmpty()) {
+            android.util.Log.w("KeyboardView", "calculateKeyBounds: No rows to calculate bounds for")
+            return
+        }
+        
+        // Verify view is measured
+        if (width <= 0 || height <= 0) {
+            android.util.Log.w("KeyboardView", "calculateKeyBounds: View not measured yet (width=$width, height=$height)")
+            return
+        }
 
         // Calculate key dimensions
         // Remove horizontal insets to eliminate unwanted padding
@@ -548,6 +1126,8 @@ class KeyboardView @JvmOverloads constructor(
         val horizontalInsetEnd = 0f
         val availableWidth = width - (paddingLeft + paddingRight)
         val availableHeight = height - (paddingTop + paddingBottom)
+        
+        android.util.Log.d("KeyboardView", "calculateKeyBounds: View size=$width x $height, available=$availableWidth x $availableHeight, padding=($paddingLeft, $paddingTop, $paddingRight, $paddingBottom)")
 
         // Use compact key height scaled by heightPercentage
         val compactKeyHeightDp = KeyboardDesignSystem.Dimensions.KEY_HEIGHT_COMPACT
@@ -645,6 +1225,8 @@ class KeyboardView @JvmOverloads constructor(
             currentY += keyHeight + keyVerticalSpacing
         }
 
+        android.util.Log.d("KeyboardView", "calculateKeyBounds: Calculated ${keyBounds.size} key bounds for ${rows.size} rows")
+        
         // Update swipe key bounds if swipe typing is enabled
         if (isSwipeTypingEnabled) {
             updateSwipeKeyBounds()
@@ -652,24 +1234,74 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun drawCustomIcon(canvas: Canvas, key: Key, bounds: RectF): Boolean {
-        // Use text-based icons for reliability - they always render correctly
-        val iconText = when (key.type) {
+        // Get Material You icon drawable based on key type
+        val iconDrawable = when (key.type) {
             com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
                 // Context-aware enter icon based on IME_ACTION
                 when (currentEnterAction and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) {
-                    android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> "📤" // Send
-                    android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH -> "🔍" // Search
-                    android.view.inputmethod.EditorInfo.IME_ACTION_GO -> "➡️" // Go
-                    android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> "⏭️" // Next
-                    android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> "✓" // Done
-                    else -> "⏎" // Default: return/newline
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> iconEnterSend
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH -> iconEnterSearch
+                    android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> iconEnterDone
+                    else -> iconEnter // Default: return/newline
+                }
+            }
+            com.kannada.kavi.core.layout.models.KeyType.DELETE -> iconDelete
+            com.kannada.kavi.core.layout.models.KeyType.SHIFT -> iconShift
+            com.kannada.kavi.core.layout.models.KeyType.LANGUAGE -> iconLanguage
+            com.kannada.kavi.core.layout.models.KeyType.EMOJI -> iconEmoji
+            else -> null
+        }
+        
+        if (iconDrawable != null) {
+            // Get icon color based on key type
+            val iconColor = when (key.type) {
+                com.kannada.kavi.core.layout.models.KeyType.ENTER -> KeyboardDesignSystem.Colors.ACTION_KEY_ICON_DYNAMIC
+                com.kannada.kavi.core.layout.models.KeyType.DELETE,
+                com.kannada.kavi.core.layout.models.KeyType.SHIFT -> KeyboardDesignSystem.Colors.SPECIAL_KEY_ICON_DYNAMIC
+                else -> KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+            }
+            
+            // Calculate icon size - use 50% of smaller dimension for Material You icons
+            val iconSize = min(bounds.width(), bounds.height()) * 0.5f
+            
+            // Calculate icon bounds (centered in key bounds)
+            val iconLeft = bounds.centerX() - iconSize / 2f
+            val iconTop = bounds.centerY() - iconSize / 2f
+            val iconRight = bounds.centerX() + iconSize / 2f
+            val iconBottom = bounds.centerY() + iconSize / 2f
+            
+            // Set drawable bounds
+            iconDrawable.setBounds(
+                iconLeft.toInt(),
+                iconTop.toInt(),
+                iconRight.toInt(),
+                iconBottom.toInt()
+            )
+            
+            // Apply color tinting to the drawable
+            iconDrawable.setTint(iconColor)
+            
+            // Draw the icon
+            iconDrawable.draw(canvas)
+            return true
+        }
+        
+        // Fallback to text-based icons if drawables not available
+        val iconText = when (key.type) {
+            com.kannada.kavi.core.layout.models.KeyType.ENTER -> {
+                when (currentEnterAction and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) {
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> "📤"
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH -> "🔍"
+                    android.view.inputmethod.EditorInfo.IME_ACTION_GO -> "➡️"
+                    android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> "⏭️"
+                    android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> "✓"
+                    else -> "⏎"
                 }
             }
             com.kannada.kavi.core.layout.models.KeyType.DELETE -> "⌫"
             com.kannada.kavi.core.layout.models.KeyType.SHIFT -> "⇧"
             com.kannada.kavi.core.layout.models.KeyType.LANGUAGE -> "🌐"
             com.kannada.kavi.core.layout.models.KeyType.EMOJI -> {
-                // Toggle icon: show keyboard icon when emoji board is visible, emoji when keyboard is visible
                 if (isEmojiBoardVisible) "⌨️" else "😊"
             }
             else -> null
@@ -683,22 +1315,24 @@ class KeyboardView @JvmOverloads constructor(
                 else -> KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
             }
             
+            val iconSize = min(bounds.width(), bounds.height()) * 0.42f
+            
             val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = iconColor
                 textAlign = Paint.Align.CENTER
-                textSize = min(bounds.width(), bounds.height()) * 0.5f
+                textSize = iconSize
                 typeface = Typeface.DEFAULT_BOLD
+                isSubpixelText = true
             }
             
-            val textY = bounds.centerY() - ((iconPaint.descent() + iconPaint.ascent()) / 2)
+            val textMetrics = iconPaint.fontMetrics
+            val textY = bounds.centerY() - ((textMetrics.ascent + textMetrics.descent) / 2f)
+            
             canvas.drawText(iconText, bounds.centerX(), textY, iconPaint)
             return true
         }
         
-        // Fallback to custom drawing for other types
-        return when (key.type) {
-            else -> false
-        }
+        return false
     }
 
     /**
@@ -975,7 +1609,34 @@ class KeyboardView @JvmOverloads constructor(
         super.onSizeChanged(w, h, oldw, oldh)
         keyboardWidth = w.toFloat()
         keyboardHeight = h.toFloat()
+        
+        // Always recalculate key bounds when size changes
+        // This ensures gesture coordinates match visual layout
         calculateKeyBounds()
+        android.util.Log.d("KeyboardView", "onSizeChanged: Key bounds recalculated (${keyBounds.size} keys), size=$w x $h")
+
+        // Update swipe key bounds if swipe typing is enabled
+        if (isSwipeTypingEnabled) {
+            updateSwipeKeyBounds()
+
+            // Set keyboard bounds for coordinate normalization (FlorisBoard approach)
+            swipeGestureDetector?.setKeyboardBounds(
+                0f, 0f, keyboardWidth, keyboardHeight
+            )
+        }
+        
+        // Notify SwipePathView of size change to ensure coordinate alignment
+        swipePathView?.let { pathView ->
+            // Ensure SwipePathView matches our size exactly
+            pathView.layoutParams?.let { params ->
+                if (params.width != w || params.height != h) {
+                    params.width = w
+                    params.height = h
+                    pathView.requestLayout()
+                    android.util.Log.d("KeyboardView", "onSizeChanged: SwipePathView size updated to $w x $h")
+                }
+            }
+        }
     }
 
     /**
@@ -993,6 +1654,9 @@ class KeyboardView @JvmOverloads constructor(
      */
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        // Skip drawing if not visible to improve performance
+        if (!isShown) return
 
         canvas.drawColor(KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC)
 
@@ -1053,15 +1717,15 @@ class KeyboardView @JvmOverloads constructor(
             else -> if (key == pressedKey) keyPressedPaint else keyBackgroundPaint
         }
 
-        // Draw subtle elevation shadow (only if not pressed)
-        if (key != pressedKey && key != animatingKey) {
+        // Draw subtle elevation shadow (only if not pressed or animating)
+        // Skip shadow during animations to prevent background layer animation artifact
+        if (key != pressedKey && key != animatingKey && keyPressScale == 1.0f) {
             val shadowOffsetY = 0.3f * density  // 0.3dp vertical offset for very subtle elevation
             val shadowBlur = 0.5f * density  // Minimal blur effect
-            val shadowOpacity = 0.05f  // 5% opacity for very subtle shadow
-            
-            keyShadowPaint.color = ColorUtils.setAlphaComponent(0xFF000000.toInt(), (255 * shadowOpacity).toInt())
-            keyShadowPaint.style = Paint.Style.FILL
-            
+
+            // Use pre-configured shadow paint (don't modify during draw for performance)
+            // Shadow paint is already configured with correct opacity in applyColors()
+
             // Draw shadow slightly offset below (very subtle elevation effect)
             val shadowBounds = RectF(
                 drawBounds.left,
@@ -1069,7 +1733,7 @@ class KeyboardView @JvmOverloads constructor(
                 drawBounds.right,
                 drawBounds.bottom + shadowOffsetY + shadowBlur
             )
-            
+
             // Draw shadow with rounded corners (very subtle elevation effect)
             canvas.drawRoundRect(shadowBounds, cornerRadius, cornerRadius, keyShadowPaint)
         }
@@ -1097,24 +1761,17 @@ class KeyboardView @JvmOverloads constructor(
         val iconDrawn = drawCustomIcon(canvas, key, drawBounds)
 
         if (!iconDrawn && displayLabel.isNotEmpty()) {
-            val targetPaint = if (isSpaceKey) spaceBarPaint else labelPaint
-            targetPaint.color = when {
-                isActionKey -> KeyboardDesignSystem.Colors.ACTION_KEY_TEXT_DYNAMIC  // Dynamic text on action key
-                isUtilityKey -> KeyboardDesignSystem.Colors.SPECIAL_KEY_TEXT_DYNAMIC  // Dynamic text on special keys
-                else -> KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC  // Dynamic text on regular keys
-            }
-
-            if (!isSpaceKey) {
-                // Use text size from design system
-                val optimalTextSize = KeyboardDesignSystem.getTextSize(context, KeyboardDesignSystem.TextType.KEY_LABEL)
-                labelPaint.textSize = optimalTextSize
-                // Center text vertically (adjust slightly if hint is present)
+            // OPTIMIZATION: Use pre-configured Paint objects - no modifications during onDraw
+            if (isSpaceKey) {
+                // Spacebar uses its own pre-configured paint
+                val textY = drawBounds.centerY() - ((spaceBarPaint.descent() + spaceBarPaint.ascent()) / 2)
+                canvas.drawText(displayLabel, drawBounds.centerX(), textY, spaceBarPaint)
+            } else {
+                // Regular keys - paint is already configured with correct color and size
+                // No need to modify paint objects during draw
                 val hintOffset = if (!key.hint.isNullOrBlank()) hintPaint.textSize * 0.2f else 0f
                 val textY = drawBounds.centerY() + hintOffset - ((labelPaint.descent() + labelPaint.ascent()) / 2)
                 canvas.drawText(displayLabel, drawBounds.centerX(), textY, labelPaint)
-            } else {
-                val textY = drawBounds.centerY() - ((spaceBarPaint.descent() + spaceBarPaint.ascent()) / 2)
-                canvas.drawText(displayLabel, drawBounds.centerX(), textY, spaceBarPaint)
             }
         }
     }
@@ -1132,15 +1789,62 @@ class KeyboardView @JvmOverloads constructor(
      * @return true if we handled the event
      */
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // If swipe typing is enabled, delegate to swipe gesture detector
-        if (isSwipeTypingEnabled && swipeGestureDetector != null) {
-            val handled = swipeGestureDetector?.onTouchEvent(event) ?: false
-            if (handled) {
+        // CRITICAL: Ensure coordinates are relative to this view
+        // MotionEvent coordinates are already in view coordinates, but verify
+        val eventX = event.x
+        val eventY = event.y
+        
+        // Verify coordinates are within bounds (helps catch coordinate space issues)
+        if (eventX < 0 || eventX > width || eventY < 0 || eventY > height) {
+            android.util.Log.w("KeyboardView", "Touch event outside bounds: ($eventX, $eventY), view size=$width x $height")
+        }
+        
+        // If swipe typing or gestures are enabled, try swipe detector first
+        if ((isSwipeTypingEnabled || isGesturesEnabled) && swipeGestureDetector != null) {
+            // Always pass events to swipe detector first
+            // Event coordinates are already in KeyboardView's coordinate space
+            val swipeHandled = swipeGestureDetector?.onTouchEvent(event) ?: false
+
+            // For ACTION_MOVE during a swipe, always consume the event
+            if (event.action == MotionEvent.ACTION_MOVE && swipeGestureDetector?.isSwiping() == true) {
                 return true
+            }
+
+            // If the detector consumed the event (it's a swipe), we're done
+            if (swipeHandled) {
+                android.util.Log.d("KeyboardView", "Swipe detector handled event: ${event.action}")
+                return true
+            }
+
+            // For ACTION_DOWN, let normal handling proceed even if swipe detector didn't consume
+            // This allows swipe detector to track the start, but normal touch can also handle it
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                // Swipe detector tracks the start but returns false for taps
+                // Continue with normal touch handling
+            } else if (event.action == MotionEvent.ACTION_MOVE) {
+                // For MOVE, if swipe detector consumed it, we're done
+                // The detector will consume if movement exceeds tap threshold
+                if (swipeHandled) {
+                    // Swipe detector is handling this - don't process as normal touch
+                    return true
+                }
+                // If swipe detector didn't consume, check if we're tracking a swipe
+                val isSwiping = swipeGestureDetector?.isSwiping() == true
+                if (isSwiping) {
+                    // We're tracking a swipe - let swipe detector handle it
+                    android.util.Log.d("KeyboardView", "Swipe in progress, skipping normal touch")
+                    return true
+                }
+            } else if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
+                // For UP/CANCEL, if we were swiping, let swipe detector handle it
+                if (swipeGestureDetector?.isSwiping() == true || swipeHandled) {
+                    android.util.Log.d("KeyboardView", "Swipe ending, skipping normal touch handling")
+                    return true
+                }
             }
         }
 
-        // Fall back to standard touch handling
+        // Handle touch events (for both normal touches and tap callbacks)
         when (event.action) {
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -1151,12 +1855,23 @@ class KeyboardView @JvmOverloads constructor(
 
             MotionEvent.ACTION_UP,
             MotionEvent.ACTION_POINTER_UP -> {
-                // User lifted finger
+                // If we were swiping, let swipe detector handle the UP event first
+                if ((isSwipeTypingEnabled || isGesturesEnabled) && swipeGestureDetector?.isSwiping() == true) {
+                    // Swipe detector will handle this in onTouchEvent above
+                    // Don't process as normal touch
+                    return true
+                }
+                // User lifted finger (normal tap)
                 handleTouchUp(event.x, event.y)
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
+                // If we're swiping, don't process as normal touch
+                if ((isSwipeTypingEnabled || isGesturesEnabled) && swipeGestureDetector?.isSwiping() == true) {
+                    // Swipe is in progress, let swipe detector handle it
+                    return true
+                }
                 // Track movement for cancelling long press when sliding away
                 handleTouchMove(event.x, event.y)
                 return true
@@ -1182,6 +1897,7 @@ class KeyboardView @JvmOverloads constructor(
      * - Theme-based haptic feedback intensity
      */
     private fun handleTouchDown(x: Float, y: Float) {
+        customLongPressHandled = false
         cancelLongPressDetection()
         val key = findKeyAt(x, y)
 
@@ -1195,7 +1911,10 @@ class KeyboardView @JvmOverloads constructor(
             // Start ripple animation
             startRippleAnimation(x, y, key.bounds)
 
-            invalidate() // Redraw to show pressed state
+            // Invalidate only the pressed key area for better performance
+            val bounds = key.bounds
+            invalidate(bounds.left.toInt() - 10, bounds.top.toInt() - 10,
+                      bounds.right.toInt() + 10, bounds.bottom.toInt() + 10)
 
             // Vibrate
             performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
@@ -1203,7 +1922,10 @@ class KeyboardView @JvmOverloads constructor(
             // Play sound (if enabled in theme)
             // TODO: implement sound effects based on theme.interaction.soundEnabled
 
-            if (!key.key.longPressKeys.isNullOrEmpty()) {
+            val shouldScheduleLongPress = !key.key.longPressKeys.isNullOrEmpty() ||
+                (key.key.type == com.kannada.kavi.core.layout.models.KeyType.COMMA_EMOJI &&
+                    commaEmojiLongPressListener != null)
+            if (shouldScheduleLongPress) {
                 scheduleLongPress(key)
             }
         }
@@ -1217,7 +1939,7 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Start key press scale animation
+     * Start key press scale animation with improved timing
      *
      * @param key The key to animate
      */
@@ -1225,21 +1947,44 @@ class KeyboardView @JvmOverloads constructor(
         // Cancel any existing animation
         keyPressAnimator?.cancel()
 
+        // Mark view as having transient state for smoother animations
+        androidx.core.view.ViewCompat.setHasTransientState(this, true)
+
         animatingKey = key
         keyPressScale = 1.0f
 
-        // Create scale down animation
+        // Pre-calculate key bounds for better performance
+        val keyBound = keyBounds.find { it.key == key }
+        val animBounds = keyBound?.bounds?.let { bounds ->
+            RectF(
+                bounds.left - 20,
+                bounds.top - 20,
+                bounds.right + 20,
+                bounds.bottom + 20
+            )
+        }
+
+        // Create scale down animation with coordinated timing
         keyPressAnimator = ValueAnimator.ofFloat(1.0f, KeyboardDesignSystem.Animations.KEY_PRESS_SCALE).apply {
             duration = KeyboardDesignSystem.Animations.KEY_PRESS_DURATION
-            interpolator = DecelerateInterpolator()
+            interpolator = AccelerateDecelerateInterpolator() // Smooth motion
 
             addUpdateListener { animator ->
                 keyPressScale = animator.animatedValue as Float
-                invalidate()
+                // Use pre-calculated bounds for better performance
+                animBounds?.let {
+                    invalidate(
+                        it.left.toInt(),
+                        it.top.toInt(),
+                        it.right.toInt(),
+                        it.bottom.toInt()
+                    )
+                } ?: invalidate() // Fallback to full invalidate if key not found
             }
 
-            // After press, animate back to normal
+            // Chain release animation without delay for smooth transition
             doOnEnd {
+                // Start release animation immediately for smooth transition
                 animateKeyRelease()
             }
 
@@ -1248,21 +1993,41 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Animate key release
+     * Animate key release with smooth transition
      */
     private fun animateKeyRelease() {
+        // Pre-calculate bounds if not already cached
+        val animBounds = animatingKey?.let { key ->
+            keyBounds.find { it.key == key }?.bounds?.let { b ->
+                RectF(b.left - 20, b.top - 20, b.right + 20, b.bottom + 20)
+            }
+        }
+
         keyPressAnimator = ValueAnimator.ofFloat(keyPressScale, 1.0f).apply {
             duration = KeyboardDesignSystem.Animations.KEY_RELEASE_DURATION
-            interpolator = DecelerateInterpolator()
+            interpolator = DecelerateInterpolator() // Smooth deceleration
+
+            // Small start delay for better visual separation between press and release
+            startDelay = 30L
 
             addUpdateListener { animator ->
                 keyPressScale = animator.animatedValue as Float
-                invalidate()
+                // Use pre-calculated bounds for better performance
+                animBounds?.let {
+                    invalidate(
+                        it.left.toInt(),
+                        it.top.toInt(),
+                        it.right.toInt(),
+                        it.bottom.toInt()
+                    )
+                } ?: invalidate() // Fallback to full invalidate if key not found
             }
 
             doOnEnd {
                 animatingKey = null
                 keyPressScale = 1.0f
+                // Clear transient state
+                androidx.core.view.ViewCompat.setHasTransientState(this@KeyboardView, false)
             }
 
             start()
@@ -1270,7 +2035,7 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Start Material You ripple animation
+     * Start Material You ripple animation with improved timing
      *
      * @param x Touch X coordinate
      * @param y Touch Y coordinate
@@ -1289,14 +2054,66 @@ class KeyboardView @JvmOverloads constructor(
             (bounds.width() * bounds.width() + bounds.height() * bounds.height()).toDouble()
         ).toFloat() / 2f
 
-        // Create ripple animator
+        // Pre-calculate animation bounds for performance
+        val maxRippleBounds = (maxRadius + 10).toInt()
+        val rippleAnimBounds = RectF(
+            rippleX - maxRippleBounds,
+            rippleY - maxRippleBounds,
+            rippleX + maxRippleBounds,
+            rippleY + maxRippleBounds
+        )
+
+        // Create ripple animator with Material motion
         rippleAnimator = ValueAnimator.ofFloat(0f, maxRadius).apply {
             duration = KeyboardDesignSystem.Animations.RIPPLE_DURATION
+            interpolator = AccelerateDecelerateInterpolator() // Smooth motion
+
+            addUpdateListener { animator ->
+                rippleRadius = animator.animatedValue as Float
+                // Use pre-calculated max bounds for consistent invalidation
+                invalidate(
+                    rippleAnimBounds.left.toInt(),
+                    rippleAnimBounds.top.toInt(),
+                    rippleAnimBounds.right.toInt(),
+                    rippleAnimBounds.bottom.toInt()
+                )
+            }
+
+            // Auto-fade after reaching max size
+            doOnEnd {
+                // Fade out animation for smooth finish
+                fadeOutRipple()
+            }
+
+            start()
+        }
+    }
+
+    /**
+     * Fade out ripple animation for smooth finish
+     */
+    private fun fadeOutRipple() {
+        val currentRadius = rippleRadius
+        if (currentRadius <= 0) return
+
+        val fadeAnimator = ValueAnimator.ofFloat(currentRadius, 0f).apply {
+            duration = 100L // Quick fade
             interpolator = DecelerateInterpolator()
 
             addUpdateListener { animator ->
                 rippleRadius = animator.animatedValue as Float
-                invalidate()
+                // Calculate bounds for current radius
+                val rippleBounds = (rippleRadius + 10).toInt()
+                invalidate(
+                    (rippleX - rippleBounds).toInt(),
+                    (rippleY - rippleBounds).toInt(),
+                    (rippleX + rippleBounds).toInt(),
+                    (rippleY + rippleBounds).toInt()
+                )
+            }
+
+            doOnEnd {
+                rippleRadius = 0f
             }
 
             start()
@@ -1312,9 +2129,11 @@ class KeyboardView @JvmOverloads constructor(
         cancelLongPressDetection()
         val key = findKeyAt(x, y)
         val popupVisible = longPressPopup != null
+        val skipKeyPress = customLongPressHandled
+        customLongPressHandled = false
 
         // Only trigger if finger lifted on the same key it pressed and no popup stole the event
-        if (!popupVisible && key != null && key.key == pressedKey) {
+        if (!popupVisible && !skipKeyPress && key != null && key.key == pressedKey) {
             // Notify listener
             keyPressListener?.invoke(key.key)
         }
@@ -1353,11 +2172,30 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun scheduleLongPress(targetKey: KeyBound) {
         cancelLongPressDetection()
-        if (targetKey.key.longPressKeys.isNullOrEmpty()) return
+        val hasPopupOptions = !targetKey.key.longPressKeys.isNullOrEmpty()
+        val supportsCommaEmoji = targetKey.key.type == com.kannada.kavi.core.layout.models.KeyType.COMMA_EMOJI &&
+                commaEmojiLongPressListener != null
+        val supportsEmojiSkinTone = targetKey.key.type == com.kannada.kavi.core.layout.models.KeyType.EMOJI &&
+                emojiLongPressListener != null
+        if (!hasPopupOptions && !supportsCommaEmoji && !supportsEmojiSkinTone) return
 
         longPressTarget = targetKey
         val runnable = Runnable {
-            showLongPressPopup(targetKey)
+            when {
+                targetKey.key.type == com.kannada.kavi.core.layout.models.KeyType.COMMA_EMOJI &&
+                commaEmojiLongPressListener != null -> {
+                    customLongPressHandled = true
+                    commaEmojiLongPressListener?.invoke()
+                    clearPressedKey()
+                }
+                targetKey.key.type == com.kannada.kavi.core.layout.models.KeyType.EMOJI &&
+                emojiLongPressListener != null -> {
+                    customLongPressHandled = true
+                    emojiLongPressListener?.invoke(targetKey.key.output)
+                    clearPressedKey()
+                }
+                else -> showLongPressPopup(targetKey)
+            }
         }
         longPressRunnable = runnable
         longPressHandler.postDelayed(runnable, LONG_PRESS_TIMEOUT_MS)
@@ -1462,25 +2300,65 @@ class KeyboardView @JvmOverloads constructor(
     /**
      * Find which key is at the given coordinates
      *
-     * @param x X coordinate of touch
-     * @param y Y coordinate of touch
+     * @param x X coordinate of touch (in view coordinates)
+     * @param y Y coordinate of touch (in view coordinates)
      * @return The key at that position, or null
      */
     private fun findKeyAt(x: Float, y: Float): KeyBound? {
-        // Material You Profile: Add 6dp touch padding for 48dp minimum touch targets
-        // Visual key is 42dp, touch area is 48dp (42 + 6dp padding)
-        val density = resources.displayMetrics.density
-        val touchPadding = KeyboardDesignSystem.Dimensions.TOUCH_PADDING_VERTICAL * density
+        if (keyBounds.isEmpty()) {
+            android.util.Log.w("KeyboardView", "findKeyAt: keyBounds is empty!")
+            return null
+        }
 
-        return keyBounds.find { keyBound ->
-            // Expand bounds by touch padding for better accessibility
-            val expandedBounds = RectF(
-                keyBound.bounds.left,
-                keyBound.bounds.top - touchPadding,
-                keyBound.bounds.right,
-                keyBound.bounds.bottom + touchPadding
-            )
-            expandedBounds.contains(x, y)
+        // For swipe detection, check exact bounds first
+        // This provides the most accurate key detection during swipes
+        val exactMatch = keyBounds.find { keyBound ->
+            keyBound.bounds.contains(x, y)
+        }
+
+        if (exactMatch != null) {
+            return exactMatch
+        }
+
+        // If no exact match and we're in the middle of a swipe,
+        // find the closest key within a reasonable distance
+        if (swipeGestureDetector?.isSwiping() == true) {
+            var closestKey: KeyBound? = null
+            var closestDistance = Float.MAX_VALUE
+
+            keyBounds.forEach { keyBound ->
+                // Calculate distance from point to key center
+                val centerX = keyBound.bounds.centerX()
+                val centerY = keyBound.bounds.centerY()
+                val distance = kotlin.math.sqrt(
+                    (x - centerX) * (x - centerX) + (y - centerY) * (y - centerY)
+                )
+
+                // Use larger radius for better swipe detection
+                // 60% of key width for more forgiving detection
+                val maxDistance = keyBound.bounds.width() * 0.6f
+                if (distance < maxDistance && distance < closestDistance) {
+                    closestKey = keyBound
+                    closestDistance = distance
+                }
+            }
+
+            return closestKey
+        } else {
+            // For taps (not swipes), use expanded bounds for better touch targets
+            val density = resources.displayMetrics.density
+            val touchPadding = KeyboardDesignSystem.Dimensions.TOUCH_PADDING_VERTICAL * density
+
+            return keyBounds.find { keyBound ->
+                // Expand bounds by touch padding for better accessibility
+                val expandedBounds = RectF(
+                    keyBound.bounds.left - touchPadding,
+                    keyBound.bounds.top - touchPadding,
+                    keyBound.bounds.right + touchPadding,
+                    keyBound.bounds.bottom + touchPadding
+                )
+                expandedBounds.contains(x, y)
+            }
         }
     }
 
