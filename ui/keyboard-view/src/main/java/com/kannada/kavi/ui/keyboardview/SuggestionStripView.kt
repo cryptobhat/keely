@@ -4,11 +4,17 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import androidx.annotation.DrawableRes
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.drawable.DrawableCompat
 import com.kannada.kavi.features.suggestion.models.Suggestion
-import com.kannada.kavi.features.themes.KeyboardTheme
+import com.kannada.kavi.features.themes.KeyboardDesignSystem
+import com.kannada.kavi.ui.keyboardview.R
 
 /**
  * SuggestionStripView - The Suggestion Bar Above Keyboard
@@ -75,8 +81,32 @@ class SuggestionStripView @JvmOverloads constructor(
     // Listener for suggestion taps
     private var onSuggestionClickListener: ((Suggestion) -> Unit)? = null
 
-    // Theme (Material You design system)
-    private var theme: KeyboardTheme = KeyboardTheme.defaultLight()
+    // Icon resources
+    enum class IconType {
+        VIEW_COZY,
+        CONTENT_PASTE,
+        SETTINGS,
+        PALETTE,
+        MIC
+    }
+
+    // Icon drawables
+    private var iconDrawables: Map<IconType, Drawable?> = emptyMap()
+    
+    // Icon bounds for touch detection
+    private val iconBounds = mutableListOf<IconBound>()
+    
+    // Currently pressed icon
+    private var pressedIcon: IconType? = null
+    
+    // Icon click listeners
+    private var onIconClickListener: ((IconType) -> Unit)? = null
+
+    private var primaryTextColor = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+    private var secondaryTextColor = KeyboardDesignSystem.Colors.KEY_HINT_TEXT_DYNAMIC
+    private var iconAccentColor = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND_DYNAMIC
+    private var pinnedIconColor = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND_DYNAMIC
+    private var pasteIconColor = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND_DYNAMIC
 
     // Paint objects (reused for performance)
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -124,57 +154,104 @@ class SuggestionStripView @JvmOverloads constructor(
     private var chipCornerRadius = 16f
 
     init {
-        // Apply default theme
-        applyTheme(theme)
+        applyColors()
+        loadIcons()
+    }
+    
+    /**
+     * Load icon drawables from resources
+     */
+    private fun loadIcons() {
+        iconDrawables = mapOf(
+            IconType.VIEW_COZY to loadIconDrawable(R.drawable.view_cozy_24),
+            IconType.CONTENT_PASTE to loadIconDrawable(R.drawable.content_paste_24),
+            IconType.SETTINGS to loadIconDrawable(R.drawable.settings_24),
+            IconType.PALETTE to loadIconDrawable(R.drawable.palette_24),
+            IconType.MIC to loadIconDrawable(R.drawable.mic_24)
+        )
+    }
+    
+    /**
+     * Load a drawable by resource id, returning null if not found.
+     * Returns the original drawable (not mutated) so we can create fresh copies when drawing.
+     */
+    private fun loadIconDrawable(@DrawableRes resId: Int): Drawable? {
+        return ContextCompat.getDrawable(context, resId)
+    }
+    
+    /**
+     * Set listener for icon clicks
+     */
+    fun setOnIconClickListener(listener: (IconType) -> Unit) {
+        this.onIconClickListener = listener
     }
 
     /**
-     * Set Material You theme
-     *
-     * @param theme KeyboardTheme to apply
+     * Set theme (no-op - design system removed)
      */
-    fun setTheme(theme: KeyboardTheme) {
-        this.theme = theme
-        applyTheme(theme)
+    fun setTheme(theme: Any?) {
+        refreshColors()
+    }
+
+    fun refreshColors() {
+        applyColors()
+        // Reload icons to ensure they're properly tinted with new colors
+        loadIcons()
         invalidate()
     }
 
     /**
-     * Apply theme to all Paint objects
+     * Apply colors to all Paint objects
      */
-    private fun applyTheme(theme: KeyboardTheme) {
+    private fun applyColors() {
         val density = resources.displayMetrics.density
+        val keyboardBackground = KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC
+        val chipBackground = KeyboardDesignSystem.Colors.KEY_BACKGROUND_DYNAMIC
+        val pressedBackground = KeyboardDesignSystem.Colors.KEY_PRESSED_DYNAMIC
+        val accentColor = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND_DYNAMIC
+        val dividerColor = ColorUtils.setAlphaComponent(
+            KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC,
+            (0.12f * 255).toInt()
+        )
+        val borderColor = ColorUtils.setAlphaComponent(
+            KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC,
+            (0.06f * 255).toInt()
+        )
 
-        // Apply colors
-        backgroundPaint.color = theme.colors.suggestionBackground
-        suggestionBackgroundPaint.color = theme.colors.suggestionBackground
-        pressedBackgroundPaint.color = theme.colors.keyPressed
-        dividerPaint.color = theme.colors.suggestionDivider
-        selectionIndicatorPaint.color = theme.colors.primary
-        bottomBorderPaint.color = theme.colors.suggestionDivider
+        primaryTextColor = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+        secondaryTextColor = KeyboardDesignSystem.Colors.KEY_HINT_TEXT_DYNAMIC
+        iconAccentColor = accentColor
+        pinnedIconColor = accentColor
+        pasteIconColor = accentColor
+
+        setBackgroundColor(keyboardBackground)
+        backgroundPaint.color = keyboardBackground
+        suggestionBackgroundPaint.color = chipBackground
+        pressedBackgroundPaint.color = pressedBackground
+        dividerPaint.color = dividerColor
+        selectionIndicatorPaint.color = accentColor
+        bottomBorderPaint.color = borderColor
         chipCornerRadius = 18f * density
 
-        // Apply typography
         textPaint.apply {
-            color = theme.colors.suggestionText
-            textSize = theme.typography.bodySize * density
+            color = primaryTextColor
+            textSize = 14f * density
         }
 
         highConfidenceTextPaint.apply {
-            color = theme.colors.suggestionText
-            textSize = theme.typography.buttonSize * density
+            color = primaryTextColor
+            textSize = 16f * density
             isFakeBoldText = true
         }
 
         lowConfidenceTextPaint.apply {
-            color = theme.colors.onSurfaceVariant
-            textSize = theme.typography.captionSize * density
+            color = secondaryTextColor
+            textSize = 12f * density
         }
 
-        // Apply spacing
         dividerWidth = 0f
-        horizontalPadding = theme.spacing.containerPadding * density
-        verticalPadding = theme.spacing.containerPadding * density
+        horizontalPadding = 16f * density
+        verticalPadding = 12f * density
     }
 
     /**
@@ -184,6 +261,7 @@ class SuggestionStripView @JvmOverloads constructor(
      */
     fun setSuggestions(suggestions: List<Suggestion>) {
         this.suggestions = suggestions.take(3) // Show max 3 suggestions
+        calculateIconBounds() // Recalculate icon bounds based on suggestion state
         calculateSuggestionBounds()
         invalidate() // Request redraw
     }
@@ -203,13 +281,15 @@ class SuggestionStripView @JvmOverloads constructor(
     fun clear() {
         suggestions = emptyList()
         suggestionBounds.clear()
+        calculateIconBounds() // Recalculate icon bounds to show all icons
         invalidate()
     }
 
     /**
      * Calculate bounds for each suggestion
      *
-     * Divides the strip width equally among suggestions
+     * When suggestions are shown, reserves space for first and last icons,
+     * then divides remaining space among suggestions
      */
     private fun calculateSuggestionBounds() {
         suggestionBounds.clear()
@@ -217,10 +297,17 @@ class SuggestionStripView @JvmOverloads constructor(
         if (suggestions.isEmpty()) return
 
         val availableWidth = width - (paddingLeft + paddingRight)
+        val density = resources.displayMetrics.density
+        val singleIconAreaWidth = 48 * density // 24dp icon + 24dp padding on each side
+        val totalIconAreaWidth = singleIconAreaWidth * 2
+        
+        // Calculate space for suggestions (between first and last icons)
+        val suggestionAreaWidth = (availableWidth - totalIconAreaWidth).coerceAtLeast(0f)
         val suggestionCount = suggestions.size
-        val suggestionWidth = availableWidth / suggestionCount.toFloat()
+        val suggestionWidth = suggestionAreaWidth / suggestionCount.toFloat()
 
-        var currentX = paddingLeft.toFloat()
+        // Start after first icon area
+        var currentX = paddingLeft.toFloat() + singleIconAreaWidth
 
         suggestions.forEach { suggestion ->
             val bounds = RectF(
@@ -234,17 +321,76 @@ class SuggestionStripView @JvmOverloads constructor(
             currentX += suggestionWidth
         }
     }
+    
+    /**
+     * Calculate bounds for icons
+     * 
+     * When idle: Divides the strip width equally among 5 icons
+     * When suggestions shown: First icon on left, last icon on right
+     */
+    private fun calculateIconBounds() {
+        iconBounds.clear()
+        
+        val availableWidth = width - (paddingLeft + paddingRight)
+        val density = resources.displayMetrics.density
+        val iconAreaWidth = 48 * density // 24dp icon + 24dp total padding
+        
+        if (suggestions.isEmpty()) {
+            // Idle state: divide equally among 5 icons
+            val iconCount = 5
+            val iconWidth = availableWidth / iconCount.toFloat()
+            
+            var currentX = paddingLeft.toFloat()
+            
+            IconType.values().forEach { iconType ->
+                val bounds = RectF(
+                    currentX,
+                    paddingTop.toFloat(),
+                    currentX + iconWidth,
+                    height.toFloat() - paddingBottom
+                )
+                
+                iconBounds.add(IconBound(iconType, bounds))
+                currentX += iconWidth
+            }
+        } else {
+            // Suggestions shown: first icon on left, last icon on right
+            val iconTypes = IconType.values()
+            
+            // First icon (left side)
+            iconBounds.add(IconBound(
+                iconTypes[0],
+                RectF(
+                    paddingLeft.toFloat(),
+                    paddingTop.toFloat(),
+                    paddingLeft + iconAreaWidth,
+                    height.toFloat() - paddingBottom
+                )
+            ))
+            
+            // Last icon (right side)
+            iconBounds.add(IconBound(
+                iconTypes[iconTypes.size - 1],
+                RectF(
+                    width - paddingRight - iconAreaWidth,
+                    paddingTop.toFloat(),
+                    width - paddingRight.toFloat(),
+                    height.toFloat() - paddingBottom
+                )
+            ))
+        }
+    }
 
     /**
      * onMeasure - Define desired height
      *
      * Width: Match parent (full keyboard width)
-     * Height: 56dp (same as one keyboard row)
+     * Height: 40dp (reduced from 56dp for more compact design)
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val desiredWidth = MeasureSpec.getSize(widthMeasureSpec)
         val density = resources.displayMetrics.density
-        val desiredHeight = (56 * density).toInt() + paddingTop + paddingBottom
+        val desiredHeight = (40 * density).toInt() + paddingTop + paddingBottom
 
         setMeasuredDimension(desiredWidth, desiredHeight)
     }
@@ -255,6 +401,7 @@ class SuggestionStripView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         calculateSuggestionBounds()
+        calculateIconBounds()
     }
 
     /**
@@ -268,24 +415,94 @@ class SuggestionStripView @JvmOverloads constructor(
         // Draw background
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
 
-        // Bottom border to separate from keyboard rows
-        val borderHeight = resources.displayMetrics.density
-        canvas.drawRect(
-            0f,
-            height.toFloat() - borderHeight,
-            width.toFloat(),
-            height.toFloat(),
-            bottomBorderPaint
-        )
-
-        // If no suggestions, show nothing
+        // If suggestions are empty, show all icons (idle state)
         if (suggestions.isEmpty()) {
+            drawIcons(canvas, showAll = true)
             return
         }
 
+        // If suggestions exist, show only first and last icons, and suggestions in between
+        drawIcons(canvas, showAll = false)
+        
         // Draw each suggestion
         suggestionBounds.forEachIndexed { index, suggestionBound ->
             drawSuggestion(canvas, suggestionBound, index)
+        }
+
+        // No border in suggestion bar - separator will be between suggestion bar and keyboard
+    }
+    
+    /**
+     * Draw icons in the suggestion bar
+     * 
+     * @param canvas The canvas to draw on
+     * @param showAll If true, show all 5 icons. If false, show only first and last icons.
+     */
+    private fun drawIcons(canvas: Canvas, showAll: Boolean) {
+        if (iconBounds.isEmpty()) {
+            calculateIconBounds()
+        }
+        
+        val density = resources.displayMetrics.density
+        val iconSize = (24 * density).toInt() // 24dp icon size
+        
+        iconBounds.forEach { iconBound ->
+            val iconType = iconBound.iconType
+            val bounds = iconBound.bounds
+            
+            val originalDrawable = iconDrawables[iconType]
+            if (originalDrawable == null) {
+                android.util.Log.w("SuggestionStripView", "Icon drawable is null for type: $iconType")
+                return@forEach
+            }
+            
+            // Calculate icon position (centered in bounds)
+            val iconLeft = bounds.centerX() - iconSize / 2f
+            val iconTop = bounds.centerY() - iconSize / 2f
+            val iconRight = iconLeft + iconSize
+            val iconBottom = iconTop + iconSize
+            
+            // Draw pressed state background if needed
+            if (pressedIcon == iconType) {
+                canvas.drawRect(bounds, pressedBackgroundPaint)
+            }
+            
+            // Apply color tinting to the icon based on type
+            val iconColor = when (iconType) {
+                IconType.VIEW_COZY,
+                IconType.CONTENT_PASTE,
+                IconType.SETTINGS,
+                IconType.PALETTE,
+                IconType.MIC -> iconAccentColor
+            }
+
+            // Debug logging for icon tinting
+            android.util.Log.d("SuggestionStripView", "Drawing icon $iconType with color: #${Integer.toHexString(iconColor)}")
+
+            // Get a fresh mutable copy from constant state to avoid state pollution
+            // This ensures each draw uses a clean drawable instance
+            val freshDrawable = originalDrawable.constantState?.newDrawable()?.mutate()
+                ?: originalDrawable.mutate()
+            
+            // Set bounds on the fresh drawable
+            freshDrawable.setBounds(
+                iconLeft.toInt(),
+                iconTop.toInt(),
+                iconRight.toInt(),
+                iconBottom.toInt()
+            )
+            
+            // Wrap with DrawableCompat for proper vector drawable tinting
+            val tintedDrawable = DrawableCompat.wrap(freshDrawable).mutate()
+
+            // Apply tint to drawable using DrawableCompat for proper vector support
+            DrawableCompat.setTint(tintedDrawable, iconColor)
+
+            // Set proper tint mode for color replacement
+            DrawableCompat.setTintMode(tintedDrawable, android.graphics.PorterDuff.Mode.SRC_IN)
+
+            // Draw the icon
+            tintedDrawable.draw(canvas)
         }
     }
 
@@ -301,46 +518,19 @@ class SuggestionStripView @JvmOverloads constructor(
         val bounds = suggestionBound.bounds
         val isPrimary = index == 0
 
-        val chipRect = RectF(
-            bounds.left + horizontalPadding / 2f,
-            bounds.top + verticalPadding / 2f,
-            bounds.right - horizontalPadding / 2f,
-            bounds.bottom - verticalPadding / 2f
-        )
-
-        val bgPaint = if (suggestion == pressedSuggestion) {
-            pressedBackgroundPaint
-        } else {
-            suggestionBackgroundPaint
-        }
-
-        canvas.drawRoundRect(chipRect, chipCornerRadius, chipCornerRadius, bgPaint)
-
         val textPaint = when {
             isPrimary -> highConfidenceTextPaint
             suggestion.isLowConfidence() -> lowConfidenceTextPaint
             else -> this.textPaint
         }
 
-        val textX = chipRect.centerX()
-        val textY = chipRect.centerY() - ((textPaint.descent() + textPaint.ascent()) / 2)
-        val displayText = truncateText(
-            suggestion.word,
-            chipRect.width() - horizontalPadding,
-            textPaint
-        )
-        canvas.drawText(displayText, textX, textY, textPaint)
+        val maxWidth = bounds.width() - horizontalPadding * 2
+        val text = truncateText(suggestion.word, maxWidth, textPaint)
+        val textY = bounds.centerY() - ((textPaint.descent() + textPaint.ascent()) / 2)
+        canvas.drawText(text, bounds.centerX(), textY, textPaint)
 
-        if (isPrimary) {
-            val indicatorHeight = chipRect.height() * 0.1f
-            val indicatorRect = RectF(
-                chipRect.left + horizontalPadding / 2f,
-                chipRect.bottom - indicatorHeight * 1.2f,
-                chipRect.right - horizontalPadding / 2f,
-                chipRect.bottom - indicatorHeight * 0.1f
-            )
-            canvas.drawRoundRect(indicatorRect, indicatorHeight, indicatorHeight, selectionIndicatorPaint)
-        }
+        // Removed unnecessary underlines and dividers - cleaner design
+        // Only show visual feedback on press if needed (can be added back later)
     }
 
     /**
@@ -414,13 +604,20 @@ class SuggestionStripView @JvmOverloads constructor(
      * Show pressed state
      */
     private fun handleTouchDown(x: Float, y: Float) {
+        // Check if icon was pressed first
+        val iconBound = findIconAt(x, y)
+        if (iconBound != null) {
+            pressedIcon = iconBound.iconType
+            invalidate() // Redraw to show pressed state
+            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            return
+        }
+        
+        // Check if suggestion was pressed
         val suggestionBound = findSuggestionAt(x, y)
-
         if (suggestionBound != null) {
             pressedSuggestion = suggestionBound.suggestion
             invalidate() // Redraw to show pressed state
-
-            // Haptic feedback
             performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
         }
     }
@@ -428,12 +625,19 @@ class SuggestionStripView @JvmOverloads constructor(
     /**
      * Handle touch up
      *
-     * Trigger click if released on same suggestion
+     * Trigger click if released on same suggestion or icon
      */
     private fun handleTouchUp(x: Float, y: Float) {
+        // Check if icon was released
+        val iconBound = findIconAt(x, y)
+        if (iconBound != null && iconBound.iconType == pressedIcon) {
+            onIconClickListener?.invoke(iconBound.iconType)
+            clearPressed()
+            return
+        }
+        
+        // Check if suggestion was released
         val suggestionBound = findSuggestionAt(x, y)
-
-        // Only trigger click if released on same suggestion as pressed
         if (suggestionBound != null && suggestionBound.suggestion == pressedSuggestion) {
             onSuggestionClickListener?.invoke(suggestionBound.suggestion)
         }
@@ -446,6 +650,7 @@ class SuggestionStripView @JvmOverloads constructor(
      */
     private fun clearPressed() {
         pressedSuggestion = null
+        pressedIcon = null
         invalidate()
     }
 
@@ -461,12 +666,34 @@ class SuggestionStripView @JvmOverloads constructor(
             suggestionBound.bounds.contains(x, y)
         }
     }
+    
+    /**
+     * Find which icon is at the given coordinates
+     *
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return IconBound if found, null otherwise
+     */
+    private fun findIconAt(x: Float, y: Float): IconBound? {
+        // iconBounds only contains visible icons (all 5 when idle, first+last when suggestions shown)
+        return iconBounds.find { iconBound ->
+            iconBound.bounds.contains(x, y)
+        }
+    }
 
     /**
      * Data class to hold suggestion and its bounds
      */
     private data class SuggestionBound(
         val suggestion: Suggestion,
+        val bounds: RectF
+    )
+    
+    /**
+     * Data class to hold icon and its bounds
+     */
+    private data class IconBound(
+        val iconType: IconType,
         val bounds: RectF
     )
 }
