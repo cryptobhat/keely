@@ -306,7 +306,7 @@ object Constants {
      */
     object Audio {
         const val MAX_SOUND_STREAMS = 5           // Maximum simultaneous sounds
-        const val DEFAULT_SOUND_VOLUME = 0.5f     // 50% volume
+        const val DEFAULT_SOUND_VOLUME = 0.8f     // 80% volume
         const val MIN_SOUND_VOLUME = 0.0f         // Muted
         const val MAX_SOUND_VOLUME = 1.0f         // Maximum volume
     }
