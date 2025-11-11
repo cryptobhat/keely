@@ -75,7 +75,13 @@
       "Bash(\"MEDIUM_FEATURES_IMPLEMENTATION_COMPLETE.md\" )",
       "Bash(\"TESTING_GUIDE_ALL_FEATURES.md\" )",
       "Bash(\"SESSION_SUMMARY_MEDIUM_FEATURES.md\")",
-      "Bash(\"FULLSCREEN_BUG_FIX.md\")"
+      "Bash(\"FULLSCREEN_BUG_FIX.md\")",
+      "WebFetch(domain:freesound.org)",
+      "WebFetch(domain:zapsplat.com)",
+      "WebFetch(domain:pixabay.com)",
+      "Bash(ffmpeg:*)",
+      "WebFetch(domain:forum.ableton.com)",
+      "WebFetch(domain:mixkit.co)"
     ],
     "deny": [],
     "ask": []

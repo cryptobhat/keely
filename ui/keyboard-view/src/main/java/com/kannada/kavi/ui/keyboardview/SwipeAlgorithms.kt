@@ -15,7 +15,8 @@ import kotlin.math.*
 object SwipeAlgorithms {
 
     // Standard resampling count used by FlorisBoard and SHARK2
-    const val RESAMPLE_POINTS = 100
+    // Increased from 100 to 200 for better long word detection
+    const val RESAMPLE_POINTS = 200
 
     // Standard deviations for Gaussian models (from FlorisBoard)
     const val SHAPE_SIGMA = 22.9f
@@ -76,6 +77,28 @@ object SwipeAlgorithms {
             keyboardLeft + point.x * keyboardWidth,
             keyboardTop + point.y * keyboardHeight
         )
+    }
+
+    /**
+     * Calculate adaptive number of resampling points based on path length
+     * Longer paths (more letters) get more sample points for better accuracy
+     * Prevents information loss for long words while maintaining efficiency for short words
+     */
+    fun getAdaptiveResampleCount(path: List<NormalizedPoint>): Int {
+        if (path.size < 2) return RESAMPLE_POINTS
+
+        // Calculate path length to estimate number of keys
+        var pathLength = 0f
+        for (i in 1 until path.size) {
+            pathLength += path[i].distanceTo(path[i - 1])
+        }
+
+        // Estimate number of keys (each key is roughly 0.15-0.2 of normalized distance)
+        val estimatedKeys = (pathLength / 0.17f).toInt()
+
+        // Adaptive resampling: 15-20 samples per key
+        val adaptiveCount = minOf(500, maxOf(100, estimatedKeys * 15))
+        return adaptiveCount
     }
 
     /**

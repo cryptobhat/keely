@@ -44,7 +44,7 @@ class ImprovedSwipeWordPredictor {
         // Pruning parameters (from FlorisBoard)
         private const val START_KEY_N_CLOSEST = 2  // Consider 2 closest words for start key
         private const val END_KEY_N_CLOSEST = 2    // Consider 2 closest words for end key
-        private const val LENGTH_TOLERANCE = 0.14f // Path length tolerance (normalized)
+        private const val LENGTH_TOLERANCE = 0.25f // Path length tolerance (increased from 0.14f for better long word detection)
 
         // Scoring parameters (from FlorisBoard research)
         private const val SHAPE_WEIGHT = 0.4f      // Weight for shape similarity
@@ -52,7 +52,7 @@ class ImprovedSwipeWordPredictor {
         private const val FREQUENCY_WEIGHT = 0.2f  // Weight for word frequency
 
         // Prediction limits
-        private const val MAX_CANDIDATES = 2000    // Max candidates after pruning
+        private const val MAX_CANDIDATES = 5000    // Max candidates after pruning (increased from 2000 for longer words)
         private const val MAX_PREDICTIONS = 10     // Max final predictions
     }
 

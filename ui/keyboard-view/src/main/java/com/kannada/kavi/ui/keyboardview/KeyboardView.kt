@@ -558,7 +558,7 @@ class KeyboardView @JvmOverloads constructor(
      * Extract word from swipe path - PRACTICAL APPROACH
      * Focus on what actually works: start/end keys + path sampling
      */
-    private fun extractWordFromPath(path: List<android.graphics.PointF>): String {
+    private fun extractWordFromPath(path: List<android.graphics.PointF>, velocity: Float = 0f): String {
         if (path.size < 3) {
             android.util.Log.d("KeyboardView", "Path too short: ${path.size} points")
             return ""  // Too short for a word
@@ -570,7 +570,7 @@ class KeyboardView @JvmOverloads constructor(
 
         // Path points are already in view coordinates (from SwipeGestureDetector)
         // No coordinate translation needed - use points directly
-        
+
         // Use distance-based sampling to ensure we don't miss keys during fast swipes
         // This ensures we check points at regular spatial intervals, not just count intervals
         val sampledPoints = mutableListOf<Pair<Int, android.graphics.PointF>>()
@@ -582,7 +582,13 @@ class KeyboardView @JvmOverloads constructor(
         } else {
             50f * density  // Default to 50dp if no keys loaded
         }
-        val minSampleDistance = avgKeyWidth * 0.3f  // Sample at least every 30% of key width
+
+        // Dynamic threshold based on swipe velocity (adaptive sampling)
+        // Fast swipes (high velocity) use lower threshold to capture more keys in long words
+        // Slow swipes use higher threshold for precision
+        val velocityFactor = (velocity / 1000f).coerceIn(0.2f, 2.0f)  // Normalize velocity to 0.2-2.0 multiplier
+        val dynamicThreshold = avgKeyWidth * (0.25f / velocityFactor)  // Lower threshold for fast swipes
+        val minSampleDistance = dynamicThreshold.coerceIn(avgKeyWidth * 0.15f, avgKeyWidth * 0.4f)  // Clamp between sensible bounds
 
         var lastSampledPoint = path[0]
         for (i in 1 until path.size - 1) {
@@ -634,7 +640,7 @@ class KeyboardView @JvmOverloads constructor(
                          val spatialDx = clampedX - lastKeyPosition!!.x
                          val spatialDy = clampedY - lastKeyPosition!!.y
                          val spatialDistance = sqrt(spatialDx * spatialDx + spatialDy * spatialDy)
-                         spatialDistance > keyWidth * 0.3f  // Moved at least 30% of key width for better detection
+                         spatialDistance > keyWidth * 0.2f  // Moved at least 20% of key width (reduced from 30% for faster swipes)
                      } else {
                          true  // First key, always add
                      }
@@ -687,7 +693,7 @@ class KeyboardView @JvmOverloads constructor(
         val resampledPath = gesture.resampledPath
         if (resampledPath.size < SwipeAlgorithms.RESAMPLE_POINTS / 2) {
             android.util.Log.d("KeyboardView", "Resampled path too short: ${resampledPath.size} points")
-            return extractWordFromPath(gesture.path)  // Fallback to old method
+            return extractWordFromPath(gesture.path, gesture.velocity)  // Fallback to old method with velocity
         }
 
         val keyProbabilities = mutableMapOf<Int, MutableMap<Key, Float>>()  // Sample index -> Key probabilities
