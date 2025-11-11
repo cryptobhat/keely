@@ -133,6 +133,8 @@ class KaviInputMethodService : InputMethodService() {
                 // Update layout when number row preference changes
                 if (::layoutManager.isInitialized) {
                     layoutManager.reset()
+                    // Trigger keyboard view to remeasure and redraw with new row count
+                    keyboardView?.requestLayout()
                     android.util.Log.d("KaviIME", "Number row preference changed: ${preferences.isNumberRowEnabled()}")
                 }
             }

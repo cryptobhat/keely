@@ -255,6 +255,9 @@ class KeyboardView @JvmOverloads constructor(
     private var keyPressScale = 1.0f
     private var animatingKey: Key? = null
 
+    // Layout change animation (e.g., number row toggle)
+    private lateinit var layoutAnimator: ValueAnimator
+
     // Key listener (sends key presses to InputMethodService)
     private var keyPressListener: ((Key) -> Unit)? = null
 
@@ -871,7 +874,7 @@ class KeyboardView @JvmOverloads constructor(
     
     /**
      * Refresh colors (call when dynamic theme changes)
-     * Does NOT trigger layout recalculation to avoid breaking suggestion bar
+     * Only triggers redraw, NOT layout recalculation (colors don't affect layout)
      */
     fun refreshColors() {
         android.util.Log.d("KeyboardView", "refreshColors() called")
@@ -884,10 +887,8 @@ class KeyboardView @JvmOverloads constructor(
         setBackgroundColor(newBgColor)
         android.util.Log.d("KeyboardView", "Background color set to: ${Integer.toHexString(newBgColor)}")
 
-        // Force complete redraw of the view
+        // Only redraw - DO NOT call requestLayout() as colors don't affect dimensions
         invalidate()
-        requestLayout()
-        postInvalidateOnAnimation()
 
         android.util.Log.d("KeyboardView", "Colors refreshed and view invalidated")
     }
@@ -900,8 +901,9 @@ class KeyboardView @JvmOverloads constructor(
     fun setKeyboard(rows: List<KeyboardRow>) {
         android.util.Log.d("KeyboardView", "setKeyboard: Old rows count = ${this.rows.size}, New rows count = ${rows.size}")
         val rowsChanged = this.rows != rows
+        val rowCountChanged = this.rows.size != rows.size
         this.rows = rows
-        
+
         if (rowsChanged) {
             // CRITICAL: Recalculate key bounds when layout changes
             // This ensures gesture tracking aligns with visual layout
@@ -909,19 +911,82 @@ class KeyboardView @JvmOverloads constructor(
             if (width > 0 && height > 0) {
                 calculateKeyBounds()
                 android.util.Log.d("KeyboardView", "setKeyboard: Key bounds recalculated (${keyBounds.size} keys)")
-                
+
                 // Update swipe key bounds if swipe typing is enabled
                 if (isSwipeTypingEnabled) {
                     updateSwipeKeyBounds()
                 }
-                
-                invalidate() // Request redraw
+
+                // If row count changed (e.g., number row toggled), animate the layout change
+                if (rowCountChanged) {
+                    animateLayoutChange()
+                } else {
+                    invalidate() // Request redraw for content changes
+                }
             } else {
                 // Layout not measured yet - will recalculate in onSizeChanged
                 android.util.Log.d("KeyboardView", "setKeyboard: Layout not measured yet, will recalculate in onSizeChanged")
                 requestLayout() // Trigger measurement
             }
             android.util.Log.d("KeyboardView", "setKeyboard: Rows updated successfully")
+        }
+    }
+
+    /**
+     * Animate keyboard layout changes (e.g., number row toggle, layer switch)
+     * Creates smooth transition when row count changes
+     */
+    private fun animateLayoutChange() {
+        // Cancel any existing layout animation
+        if (::layoutAnimator.isInitialized && layoutAnimator.isRunning) {
+            layoutAnimator.cancel()
+        }
+
+        val oldHeight = measuredHeight
+
+        // Trigger re-measurement with new row count
+        requestLayout()
+
+        // Use handler to wait for layout measurement to complete (single frame)
+        Handler(Looper.getMainLooper()).post {
+            val newHeight = measuredHeight
+
+            // Only animate if height actually changed
+            if (oldHeight != newHeight && oldHeight > 0) {
+                android.util.Log.d("KeyboardView", "animateLayoutChange: $oldHeight -> $newHeight px (ratio: ${newHeight.toFloat() / oldHeight})")
+
+                // Store original layout params
+                val lp = layoutParams
+
+                layoutAnimator = ValueAnimator.ofInt(oldHeight, newHeight).apply {
+                    duration = 200 // Smooth 200ms transition
+                    interpolator = DecelerateInterpolator(1.5f) // Ease-out animation
+
+                    addUpdateListener { valueAnimator ->
+                        val currentHeight = valueAnimator.animatedValue as Int
+
+                        // Update view height through layout params
+                        lp?.let {
+                            it.height = currentHeight
+                            layoutParams = it
+                        }
+                        invalidate()
+                    }
+
+                    doOnEnd {
+                        // Ensure final state is correct
+                        lp?.let {
+                            it.height = newHeight
+                            layoutParams = it
+                        }
+                        invalidate()
+                    }
+                }
+
+                layoutAnimator.start()
+            } else {
+                invalidate()
+            }
         }
     }
 
