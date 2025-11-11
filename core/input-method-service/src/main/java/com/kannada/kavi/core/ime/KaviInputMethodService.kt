@@ -565,18 +565,16 @@ class KaviInputMethodService : InputMethodService() {
         }
         emojiBoardView = emojiBoard
 
-        // Calculate dynamic emoji board height based on screen dimensions
-        // Use 45% of screen height for better emoji visibility
+        // Set emoji board height with maximum constraint to prevent fullscreen bug
+        // Use a reasonable max height (350dp) that adapts to screen density
+        // This allows the emoji board to be responsive without expanding container beyond bounds
         val displayMetrics = resources.displayMetrics
-        val screenHeight = displayMetrics.heightPixels
-        val statusBarHeight = (25 * displayMetrics.density).toInt() // Approximate status bar
-        val navigationBarHeight = (48 * displayMetrics.density).toInt() // Approximate nav bar
-        val availableHeight = screenHeight - statusBarHeight - navigationBarHeight
-        val emojiBoardHeight = (availableHeight * 0.45f).toInt()
+        val density = displayMetrics.density
+        val reasonableMaxHeight = (350 * density).toInt() // 350dp max height
 
         val emojiLayoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            emojiBoardHeight
+            reasonableMaxHeight
         )
         container.addView(emojiBoard, emojiLayoutParams)
 
