@@ -213,8 +213,10 @@ class EmojiBoardView @JvmOverloads constructor(
         val height = MeasureSpec.getSize(heightMeasureSpec)
 
         // Calculate emoji size (9 emojis per row - FlorisBoard style)
-        emojiSize = (width / emojisPerRow.toFloat()) * 0.75f
-        emojiPadding = (width / emojisPerRow.toFloat()) * 0.125f
+        // Optimized sizing: use 85% of cell width for emoji, 7.5% padding on each side
+        val cellWidth = width / emojisPerRow.toFloat()
+        emojiSize = cellWidth * 0.85f
+        emojiPadding = cellWidth * 0.075f
         categoryBarHeight = 52f * density  // Taller tabs like FlorisBoard
         categoryItemWidth = 90f * density  // Fixed width for horizontal scrolling
 
