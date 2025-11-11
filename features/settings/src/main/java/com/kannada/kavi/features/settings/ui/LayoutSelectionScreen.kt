@@ -1,13 +1,19 @@
 package com.kannada.kavi.features.settings.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.kannada.kavi.data.preferences.KeyboardPreferences
@@ -17,7 +23,11 @@ import com.kannada.kavi.features.themes.tokens.SpacingTokens
 /**
  * LayoutSelectionScreen - Keyboard layout selector
  *
- * Allows users to choose between:
+ * Allows users to:
+ * - Enable/disable layouts (which appear in language switcher)
+ * - Choose which layout is currently active
+ *
+ * Available layouts:
  * - QWERTY (Standard English layout)
  * - Phonetic (Kannada phonetic layout)
  * - Kavi (Kannada traditional layout)
@@ -29,8 +39,10 @@ fun LayoutSelectionScreen(
     onNavigateBack: () -> Unit
 ) {
     var currentLayout by remember { mutableStateOf(preferences.getCurrentLayout()) }
+    var enabledLayouts by remember { mutableStateOf(preferences.getEnabledLayouts()) }
     var numberRowEnabled by remember { mutableStateOf(preferences.isNumberRowEnabled()) }
     var oneHandedMode by remember { mutableStateOf(preferences.getOneHandedMode()) }
+    var showToast by remember { mutableStateOf<String?>(null) }
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -56,6 +68,14 @@ fun LayoutSelectionScreen(
                 language = "ಕನ್ನಡ"
             )
         )
+    }
+
+    // Show toast message
+    LaunchedEffect(showToast) {
+        if (showToast != null) {
+            kotlinx.coroutines.delay(3000)
+            showToast = null
+        }
     }
 
     Scaffold(
@@ -97,7 +117,7 @@ fun LayoutSelectionScreen(
         ) {
             item {
                 Text(
-                    text = "Select your preferred keyboard layout",
+                    text = "Select and configure your keyboard layouts",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = SpacingTokens.sm)
@@ -107,14 +127,43 @@ fun LayoutSelectionScreen(
             item {
                 SettingsCard {
                     layouts.forEachIndexed { index, layout ->
-                        SettingsChoiceItem(
-                            title = layout.name,
-                            description = "${layout.description} • ${layout.language}",
-                            icon = Icons.Default.Language,
-                            selected = currentLayout == layout.id,
-                            onSelect = {
-                                currentLayout = layout.id
-                                preferences.setCurrentLayout(layout.id)
+                        val isEnabled = enabledLayouts.contains(layout.id)
+                        val isActive = currentLayout == layout.id
+
+                        LayoutItem(
+                            layout = layout,
+                            isEnabled = isEnabled,
+                            isActive = isActive,
+                            onToggleEnabled = { enabled ->
+                                if (enabled) {
+                                    // Enable layout
+                                    enabledLayouts = enabledLayouts + layout.id
+                                    preferences.toggleLayoutEnabled(layout.id)
+                                } else {
+                                    // Disable layout
+                                    if (enabledLayouts.size <= 1) {
+                                        // Cannot disable the last enabled layout
+                                        showToast = "At least one layout must be enabled"
+                                    } else {
+                                        enabledLayouts = enabledLayouts - layout.id
+                                        preferences.toggleLayoutEnabled(layout.id)
+
+                                        // If disabling current layout, switch to another enabled layout
+                                        if (currentLayout == layout.id) {
+                                            val nextLayout = enabledLayouts.firstOrNull()
+                                            if (nextLayout != null) {
+                                                currentLayout = nextLayout
+                                                preferences.setCurrentLayout(nextLayout)
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            onSelectActive = {
+                                if (isEnabled) {
+                                    currentLayout = layout.id
+                                    preferences.setCurrentLayout(layout.id)
+                                }
                             }
                         )
 
@@ -247,6 +296,137 @@ fun LayoutSelectionScreen(
 
             item {
                 Spacer(modifier = Modifier.height(SpacingTokens.xl))
+            }
+        }
+
+        // Show toast notification
+        if (showToast != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(SpacingTokens.base),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = SpacingTokens.base),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.inverseSurface
+                    )
+                ) {
+                    Text(
+                        text = showToast!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.inverseOnSurface,
+                        modifier = Modifier.padding(SpacingTokens.base)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * LayoutItem - Individual layout row with enable toggle and active indicator
+ */
+@Composable
+private fun LayoutItem(
+    layout: LayoutOption,
+    isEnabled: Boolean,
+    isActive: Boolean,
+    onToggleEnabled: (Boolean) -> Unit,
+    onSelectActive: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(SpacingTokens.md))
+            .background(
+                if (isActive && isEnabled) colorScheme.primaryContainer else colorScheme.surface
+            )
+            .clickable(enabled = isEnabled, onClick = onSelectActive),
+        color = if (isActive && isEnabled) colorScheme.primaryContainer else colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(SpacingTokens.base),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Left side: layout info
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = SpacingTokens.base),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SpacingTokens.base)
+            ) {
+                // Icon
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = null,
+                    tint = if (isActive && isEnabled)
+                        colorScheme.onPrimaryContainer
+                    else if (isEnabled)
+                        colorScheme.onSurfaceVariant
+                    else
+                        colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier.size(24.dp)
+                )
+
+                // Layout name and description
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(SpacingTokens.xxs)
+                ) {
+                    Text(
+                        text = layout.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isActive && isEnabled)
+                            colorScheme.onPrimaryContainer
+                        else if (isEnabled)
+                            colorScheme.onSurface
+                        else
+                            colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+
+                    Text(
+                        text = "${layout.description} • ${layout.language}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isActive && isEnabled)
+                            colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        else if (isEnabled)
+                            colorScheme.onSurfaceVariant
+                        else
+                            colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
+            }
+
+            // Right side: active indicator and toggle switch
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SpacingTokens.sm)
+            ) {
+                // Active indicator (checkmark)
+                if (isActive && isEnabled) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Active",
+                        tint = colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Enable/disable toggle
+                Switch(
+                    checked = isEnabled,
+                    onCheckedChange = onToggleEnabled
+                )
             }
         }
     }
