@@ -12,13 +12,20 @@
     <!-- Vibration permission for haptic feedback when typing -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Internet permission for voice input (Bhashini API) -->
+    <!-- Internet permission for voice input and TTS (Amita Engine) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Record audio permission for voice input -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Storage permissions for downloading TTS audio files -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <application
+        android:name=".KaviApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -66,20 +73,18 @@
 
         <!--
             Settings Activity
-            Allows users to configure the keyboard
-            Will be created in ui/settings-ui module
+            Material You settings UI with theme customization
         -->
-        <!-- TODO: Add settings activity when UI module is ready
         <activity
-            android:name="com.kannada.kavi.ui.SettingsActivity"
-            android:label="@string/settings_title"
-            android:exported="true">
+            android:name="com.kannada.kavi.features.settings.SettingsActivity"
+            android:label="Kavi Settings"
+            android:exported="true"
+            android:theme="@style/Theme.Kavi">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        -->
 
     </application>
 

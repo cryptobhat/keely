@@ -94,29 +94,11 @@ class VoiceInputManager(
                 channels = Constants.Voice.AUDIO_CHANNELS
             )
             
-            // 7. Call Bhashini API with timeout
-            val response = withTimeout(Constants.Network.READ_TIMEOUT_SECONDS * 1000L) {
-                apiService.speechToText(
-                    apiKey = "Bearer $apiKey",
-                    request = request
-                )
-            }
-            
-            // 8. Check for API errors
-            if (response.error != null) {
-                return@withContext Result.Error(
-                    IOException("Bhashini API error: ${response.error}")
-                )
-            }
-            
-            // 9. Return transcribed text
-            if (response.text.isBlank()) {
-                return@withContext Result.Error(
-                    IOException("Empty transcription received")
-                )
-            }
-            
-            Result.Success(response.text)
+            // TODO: Update to use two-step flow like TTSManager
+            // 7. Call Bhashini API with timeout (currently using old API - needs update)
+            // Step 1: Get pipeline config
+            // Step 2: Call speechToText with dynamic URL
+            Result.Error(UnsupportedOperationException("Speech-to-Text needs to be updated to use new two-step API flow"))
             
         } catch (e: SecurityException) {
             Result.Error(e)
@@ -174,28 +156,9 @@ class VoiceInputManager(
                 channels = Constants.Voice.AUDIO_CHANNELS
             )
             
-            // Call API
-            val response = withTimeout(Constants.Network.READ_TIMEOUT_SECONDS * 1000L) {
-                apiService.speechToText(
-                    apiKey = "Bearer $apiKey",
-                    request = request
-                )
-            }
-            
-            // Check for errors
-            if (response.error != null) {
-                return@withContext Result.Error(
-                    IOException("Bhashini API error: ${response.error}")
-                )
-            }
-            
-            if (response.text.isBlank()) {
-                return@withContext Result.Error(
-                    IOException("Empty transcription received")
-                )
-            }
-            
-            Result.Success(response.text)
+            // TODO: Update to use two-step flow like TTSManager
+            // Call API (currently using old API - needs update)
+            Result.Error(UnsupportedOperationException("Speech-to-Text needs to be updated to use new two-step API flow"))
             
         } catch (e: Exception) {
             Result.Error(e)
@@ -219,4 +182,6 @@ class VoiceInputManager(
         audioRecorder.release()
     }
 }
+
+
 

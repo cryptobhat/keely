@@ -56,6 +56,13 @@ class MaterialYouThemeManager(private val context: Context) {
     private val _isDynamicColorEnabled = MutableStateFlow(false)
     val isDynamicColorEnabled: StateFlow<Boolean> = _isDynamicColorEnabled.asStateFlow()
 
+    // Expose dynamic color enable state for settings
+    val isDynamicEnabled: StateFlow<Boolean> = _isDynamicColorEnabled.asStateFlow()
+
+    // Compose color scheme for UI
+    private val _colorScheme = MutableStateFlow<androidx.compose.material3.ColorScheme?>(null)
+    val colorScheme: StateFlow<androidx.compose.material3.ColorScheme?> = _colorScheme.asStateFlow()
+
     init {
         // Initialize with default theme
         updateTheme()
@@ -79,6 +86,14 @@ class MaterialYouThemeManager(private val context: Context) {
             _isDarkMode.value = isDark
             updateTheme()
         }
+    }
+
+    /**
+     * Handle configuration changes (e.g., dark mode toggle)
+     */
+    fun onConfigurationChanged(newConfig: Configuration) {
+        val isNowDark = (newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        setDarkMode(isNowDark)
     }
 
     /**
@@ -131,13 +146,31 @@ class MaterialYouThemeManager(private val context: Context) {
             try {
                 // Try to extract dynamic colors
                 val dynamicColors = extractDynamicColors(_isDarkMode.value)
+
+                // Update Compose color scheme for Settings UI
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    try {
+                        val composeView = ComposeView(context)
+                        _colorScheme.value = if (_isDarkMode.value) {
+                            dynamicDarkColorScheme(composeView.context)
+                        } else {
+                            dynamicLightColorScheme(composeView.context)
+                        }
+                    } catch (e: Exception) {
+                        // Fallback to null if dynamic colors fail
+                        _colorScheme.value = null
+                    }
+                }
+
                 baseTheme.copy(colors = dynamicColors)
             } catch (e: Exception) {
                 // Fallback to static colors if extraction fails
                 _isDynamicColorEnabled.value = false
+                _colorScheme.value = null
                 baseTheme
             }
         } else {
+            _colorScheme.value = null
             baseTheme
         }
 

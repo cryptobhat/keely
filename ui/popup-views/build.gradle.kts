@@ -48,6 +48,7 @@ dependencies {
 
     // Module-specific dependencies
     implementation(project(":core:common"))
+    implementation(project(":features:themes"))
 
     // Testing
     testImplementation(libs.junit)

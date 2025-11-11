@@ -77,7 +77,7 @@ object Constants {
      * These control the clipboard history feature
      */
     object Clipboard {
-        const val MAX_HISTORY_ITEMS = 50         // Remember last 50 copied items
+        const val MAX_HISTORY_ITEMS = 20         // Remember last 20 copied items
         const val MAX_CLIP_LENGTH = 1000         // Maximum characters per clip
         const val MAX_UNDO_STACK_SIZE = 20       // Remember last 20 actions for undo
     }
@@ -203,7 +203,7 @@ object Constants {
         const val DICTIONARY_METADATA_FILE = "dictionaries/dictionary_metadata.json"
 
         // Dictionary loading limits
-        const val MAX_DICTIONARY_SIZE = 100000       // Maximum words to load
+        const val MAX_DICTIONARY_SIZE = 250000       // Maximum words to load
         const val MIN_WORD_FREQUENCY = 1             // Minimum frequency to include
         const val CACHE_SIZE = 5000                  // Cache top 5000 frequent words
 

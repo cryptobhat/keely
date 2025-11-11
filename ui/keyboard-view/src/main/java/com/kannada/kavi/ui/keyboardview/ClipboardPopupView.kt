@@ -7,8 +7,9 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.graphics.ColorUtils
 import com.kannada.kavi.features.clipboard.models.ClipboardItem
-// Design system removed
+import com.kannada.kavi.features.themes.KeyboardDesignSystem
 import kotlin.math.max
 import kotlin.math.min
 
@@ -99,10 +100,13 @@ class ClipboardPopupView @JvmOverloads constructor(
     private var onDeleteListener: ((ClipboardItem) -> Unit)? = null
     private var onSearchListener: ((String) -> Unit)? = null
 
-    // Simple colors (design system removed)
-    private val BACKGROUND_COLOR = 0xFFFFFFFF.toInt()
-    private val TEXT_COLOR = 0xFF191C1C.toInt()
-    private val SECONDARY_TEXT_COLOR = 0xFF757575.toInt()
+    // Dynamic colors
+    private var backgroundColor = KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC
+    private var cardColor = KeyboardDesignSystem.Colors.KEY_BACKGROUND_DYNAMIC
+    private var primaryTextColor = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+    private var secondaryTextColor = KeyboardDesignSystem.Colors.KEY_HINT_TEXT_DYNAMIC
+    private var accentColor = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND_DYNAMIC
+    private var headerTextColor = KeyboardDesignSystem.Colors.ACTION_KEY_TEXT_DYNAMIC
 
     // Paint objects
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -134,6 +138,9 @@ class ClipboardPopupView @JvmOverloads constructor(
     private val timestampPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val emptyStatePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+    }
 
     // Dimensions (from theme)
     private var headerHeight = 180f
@@ -146,11 +153,11 @@ class ClipboardPopupView @JvmOverloads constructor(
         applyColors()
     }
 
-    /**
-     * Set theme (no-op - design system removed)
-     */
-    fun setTheme(theme: Any) {
-        // Design system removed - using hardcoded values
+    fun setTheme(theme: Any?) {
+        refreshColors()
+    }
+
+    fun refreshColors() {
         applyColors()
         invalidate()
     }
@@ -160,37 +167,49 @@ class ClipboardPopupView @JvmOverloads constructor(
      */
     private fun applyColors() {
         val density = resources.displayMetrics.density
+        val pressedColor = KeyboardDesignSystem.Colors.KEY_PRESSED_DYNAMIC
+        val dividerColor = ColorUtils.setAlphaComponent(primaryTextColor, (0.12f * 255).toInt())
 
-        // Apply colors
-        backgroundPaint.color = BACKGROUND_COLOR
-        headerPaint.color = 0xFF006C5F.toInt()  // Teal
-        itemBackgroundPaint.color = BACKGROUND_COLOR
-        pressedItemPaint.color = 0xFFE8F5F3.toInt()  // Light teal
-        dividerPaint.color = 0xFFE0E0E0.toInt()
+        backgroundColor = KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND_DYNAMIC
+        cardColor = KeyboardDesignSystem.Colors.KEY_BACKGROUND_DYNAMIC
+        primaryTextColor = KeyboardDesignSystem.Colors.KEY_TEXT_DYNAMIC
+        secondaryTextColor = KeyboardDesignSystem.Colors.KEY_HINT_TEXT_DYNAMIC
+        accentColor = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND_DYNAMIC
+        headerTextColor = KeyboardDesignSystem.Colors.ACTION_KEY_TEXT_DYNAMIC
 
-        // Apply typography
+        setBackgroundColor(backgroundColor)
+        backgroundPaint.color = backgroundColor
+        headerPaint.color = accentColor
+        itemBackgroundPaint.color = cardColor
+        pressedItemPaint.color = pressedColor
+        dividerPaint.color = dividerColor
+
         textPaint.apply {
             textSize = 14f * density
-            color = TEXT_COLOR
+            color = primaryTextColor
         }
 
         headerTextPaint.apply {
             textSize = 16f * density
-            color = 0xFFFFFFFF.toInt()
+            color = headerTextColor
             isFakeBoldText = true
         }
 
         timestampPaint.apply {
             textSize = 12f * density
-            color = SECONDARY_TEXT_COLOR
+            color = secondaryTextColor
         }
 
         iconPaint.apply {
             textSize = 16f * density
-            color = 0xFF006C5F.toInt()
+            color = accentColor
         }
 
-        // Apply spacing
+        emptyStatePaint.apply {
+            textSize = 48f * density
+            color = secondaryTextColor
+        }
+
         itemPadding = 16f * density * 2
         dividerHeight = 1f * density
     }
@@ -399,7 +418,7 @@ class ClipboardPopupView @JvmOverloads constructor(
         val pinX = itemPadding
         val pinY = bounds.centerY() - ((iconPaint.descent() + iconPaint.ascent()) / 2)
         if (item.isPinned) {
-            iconPaint.color = 0xFFFFC107.toInt() // Amber/gold
+            iconPaint.color = accentColor
             canvas.drawText("⭐", pinX, pinY, iconPaint)
         }
 
@@ -415,7 +434,7 @@ class ClipboardPopupView @JvmOverloads constructor(
         canvas.drawText(timestampText, textX, timestampY, timestampPaint)
 
         // Paste icon
-        iconPaint.color = 0xFF6200EE.toInt() // Purple
+        iconPaint.color = accentColor
         val pasteX = width - 100f
         val pasteY = bounds.centerY() - ((iconPaint.descent() + iconPaint.ascent()) / 2)
         canvas.drawText("📋", pasteX, pasteY, iconPaint)
@@ -434,16 +453,10 @@ class ClipboardPopupView @JvmOverloads constructor(
      * Draw empty state
      */
     private fun drawEmptyState(canvas: Canvas) {
-        val emptyTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = 48f
-            color = 0xFF757575.toInt() // Gray
-            textAlign = Paint.Align.CENTER
-        }
-
         val text = "No clipboard history"
         val textX = width / 2f
         val textY = height / 2f
-        canvas.drawText(text, textX, textY, emptyTextPaint)
+        canvas.drawText(text, textX, textY, emptyStatePaint)
     }
 
     /**

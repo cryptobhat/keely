@@ -1,16 +1,49 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.Kavi" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/purple_200</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
-        <item name="colorOnPrimary">@color/black</item>
-        <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_200</item>
-        <item name="colorOnSecondary">@color/black</item>
-        <!-- Status bar color. -->
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <!-- Customize your theme here. -->
+    <!-- Material You (Material 3) Dark Theme -->
+    <style name="Theme.Kavi" parent="Theme.Material3.DayNight">
+        <!-- Material You Primary colors (Dark) -->
+        <item name="colorPrimary">@color/material_you_dark_primary</item>
+        <item name="colorOnPrimary">@color/material_you_dark_on_primary</item>
+        <item name="colorPrimaryContainer">@color/material_you_dark_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/material_you_dark_on_primary_container</item>
+
+        <!-- Material You Secondary colors (Dark) -->
+        <item name="colorSecondary">@color/material_you_dark_secondary</item>
+        <item name="colorOnSecondary">@color/material_you_dark_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/material_you_dark_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/material_you_dark_on_secondary_container</item>
+
+        <!-- Material You Tertiary colors (Dark) -->
+        <item name="colorTertiary">@color/material_you_dark_tertiary</item>
+        <item name="colorOnTertiary">@color/material_you_dark_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/material_you_dark_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/material_you_dark_on_tertiary_container</item>
+
+        <!-- Material You Surface colors (Dark) -->
+        <item name="colorSurface">@color/material_you_dark_surface</item>
+        <item name="colorOnSurface">@color/material_you_dark_on_surface</item>
+        <item name="colorSurfaceVariant">@color/material_you_dark_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/material_you_dark_on_surface_variant</item>
+
+        <!-- Material You Background colors (Dark) -->
+        <item name="android:colorBackground">@color/material_you_dark_background</item>
+        <item name="colorOnBackground">@color/material_you_dark_on_background</item>
+
+        <!-- Material You Outline colors (Dark) -->
+        <item name="colorOutline">@color/material_you_dark_outline</item>
+        <item name="colorOutlineVariant">@color/material_you_dark_outline_variant</item>
+
+        <!-- Material You Error colors (Dark) -->
+        <item name="colorError">@color/material_you_dark_error</item>
+        <item name="colorOnError">@color/material_you_dark_on_error</item>
+        <item name="colorErrorContainer">@color/material_you_dark_error_container</item>
+        <item name="colorOnErrorContainer">@color/material_you_dark_on_error_container</item>
+
+        <!-- Status bar color -->
+        <item name="android:statusBarColor">@color/material_you_dark_surface</item>
+        <item name="android:navigationBarColor">@color/material_you_dark_surface</item>
+
+        <!-- Enable dynamic colors on Android 12+ -->
+        <item name="dynamicColorThemeOverlay" tools:targetApi="s">@style/ThemeOverlay.Material3.DynamicColors.DayNight</item>
     </style>
 </resources>

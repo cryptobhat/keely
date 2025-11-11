@@ -11,9 +11,9 @@ import android.provider.MediaStore
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import com.kannada.kavi.core.common.Constants
 import com.kannada.kavi.features.voice.api.BhashiniApiClient
-import com.kannada.kavi.features.voice.api.models.TTSRequest
-import com.kannada.kavi.features.voice.api.models.TTSResponse
+import com.kannada.kavi.features.voice.api.models.*
 import com.kannada.kavi.features.voice.util.ApiKeyManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,9 +85,16 @@ class TTSManager(private val context: Context) {
     private var isAndroidTtsReady = false
 
     // Bhashini API (Online)
-    private val bhashiniClient = BhashiniApiClient.create()
+    private val bhashiniAuthService = BhashiniApiClient.createAuthService()
+    private val bhashiniInferenceService = BhashiniApiClient.createInferenceService()
     private val apiKeyManager = ApiKeyManager(context)
     private var isBhashiniAvailable = false
+
+    // Pipeline configuration cache (avoid repeated calls)
+    private var cachedPipelineConfig: PipelineConfigResponse? = null
+    private var cachedServiceId: String? = null
+    private var cachedInferenceUrl: String? = null
+    private var cachedAuthToken: String? = null
 
     // Media player for Bhashini audio
     private var mediaPlayer: MediaPlayer? = null
@@ -196,7 +203,70 @@ class TTSManager(private val context: Context) {
     }
 
     /**
+     * Get pipeline configuration (cached)
+     * Step 1 of Bhashini API flow
+     */
+    private suspend fun getPipelineConfig(): PipelineConfigResponse? {
+        // Return cached config if available
+        if (cachedPipelineConfig != null) {
+            return cachedPipelineConfig
+        }
+
+        return try {
+            val apiKey = apiKeyManager.getBhashiniApiKey() ?: return null
+            val userId = apiKeyManager.getBhashiniUserId() ?: "kavi-keyboard-user"
+
+            Log.d(TAG, "Requesting pipeline config...")
+
+            val request = PipelineConfigRequest(
+                pipelineTasks = listOf(
+                    PipelineTask(
+                        taskType = "tts",
+                        config = PipelineTaskConfig(
+                            language = LanguageConfig(sourceLanguage = Constants.Voice.LANGUAGE_CODE_SHORT)
+                        )
+                    )
+                ),
+                pipelineRequestConfig = PipelineRequestConfig(
+                    pipelineId = Constants.Voice.BHASHINI_PIPELINE_ID
+                )
+            )
+
+            val response = withContext(Dispatchers.IO) {
+                bhashiniAuthService.getPipelineConfig(
+                    userId = userId,
+                    apiKey = apiKey,
+                    request = request
+                )
+            }
+
+            // Extract and cache service details
+            cachedServiceId = response.responseConfig
+                ?.firstOrNull { it.taskType == "tts" }
+                ?.config?.serviceId
+                ?: Constants.Voice.BHASHINI_TTS_SERVICE_ID
+
+            cachedInferenceUrl = response.inferenceEndpoint?.callbackUrl
+                ?: "${Constants.Voice.BHASHINI_INFERENCE_BASE_URL}${Constants.Voice.BHASHINI_ENDPOINT_INFERENCE}"
+
+            cachedAuthToken = response.inferenceEndpoint?.apiKey?.value
+                ?: apiKeyManager.getBhashiniInferenceKey()
+                ?: apiKey
+
+            cachedPipelineConfig = response
+
+            Log.d(TAG, "Pipeline config cached - serviceId: $cachedServiceId, url: $cachedInferenceUrl")
+
+            response
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get pipeline config: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
      * Speak using Bhashini API (online)
+     * Uses correct two-step flow: Pipeline Config → TTS Inference
      */
     private fun speakUsingBhashini(text: String) {
         scope.launch {
@@ -210,23 +280,60 @@ class TTSManager(private val context: Context) {
                     return@launch
                 }
 
-                val request = TTSRequest(
-                    text = text,
-                    language = KANNADA_LOCALE,
-                    rate = speechRate,
-                    pitch = pitch
+                // Step 1: Get pipeline configuration
+                val pipelineConfig = getPipelineConfig()
+                if (pipelineConfig == null) {
+                    Log.e(TAG, "Failed to get pipeline config, falling back to Android TTS")
+                    speakUsingAndroidTts(text)
+                    return@launch
+                }
+
+                val serviceId = cachedServiceId ?: Constants.Voice.BHASHINI_TTS_SERVICE_ID
+                val inferenceUrl = cachedInferenceUrl ?: "${Constants.Voice.BHASHINI_INFERENCE_BASE_URL}${Constants.Voice.BHASHINI_ENDPOINT_INFERENCE}"
+                val authToken = cachedAuthToken ?: apiKey
+
+                Log.d(TAG, "Using serviceId: $serviceId")
+                Log.d(TAG, "Inference URL: $inferenceUrl")
+
+                // Step 2: Make TTS inference request
+                val ttsRequest = BhashiniTTSRequest(
+                    pipelineTasks = listOf(
+                        TTSPipelineTask(
+                            taskType = "tts",
+                            config = TTSTaskConfig(
+                                language = LanguageConfig(sourceLanguage = Constants.Voice.LANGUAGE_CODE_SHORT),
+                                serviceId = serviceId,
+                                gender = Constants.Voice.TTS_GENDER_FEMALE,
+                                samplingRate = Constants.Voice.TTS_SAMPLING_RATE
+                            )
+                        )
+                    ),
+                    inputData = TTSInputData(
+                        input = listOf(TTSInput(source = text))
+                    )
                 )
 
                 val response = withContext(Dispatchers.IO) {
-                    bhashiniClient.textToSpeech("Bearer $apiKey", request)
+                    bhashiniInferenceService.textToSpeech(
+                        url = inferenceUrl,
+                        authToken = authToken,
+                        request = ttsRequest
+                    )
                 }
 
-                if (response.error != null) {
-                    throw Exception(response.error)
-                }
+                // Extract audio from response
+                val audioContent = response.pipelineResponse
+                    ?.firstOrNull { it.taskType == "tts" }
+                    ?.audio
+                    ?.firstOrNull()
+                    ?.audioContent
 
-                // Decode base64 audio and play
-                playBhashiniAudio(response)
+                if (audioContent != null) {
+                    Log.d(TAG, "Received audio content, length: ${audioContent.length}")
+                    playBhashiniAudioContent(audioContent)
+                } else {
+                    throw Exception("No audio content in response")
+                }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Bhashini TTS failed: ${e.message}", e)
@@ -242,12 +349,16 @@ class TTSManager(private val context: Context) {
     }
 
     /**
-     * Play audio received from Bhashini
+     * Play audio received from Bhashini (base64 encoded)
      */
-    private suspend fun playBhashiniAudio(response: TTSResponse) = withContext(Dispatchers.IO) {
+    private suspend fun playBhashiniAudioContent(audioContent: String?) = withContext(Dispatchers.IO) {
         try {
+            if (audioContent.isNullOrBlank()) {
+                throw Exception("Audio content is empty")
+            }
+
             // Decode base64 audio
-            val audioBytes = android.util.Base64.decode(response.audio, android.util.Base64.DEFAULT)
+            val audioBytes = android.util.Base64.decode(audioContent, android.util.Base64.DEFAULT)
 
             // Save to temporary file
             val tempFile = File.createTempFile("tts_temp", ".wav", context.cacheDir)
@@ -319,23 +430,52 @@ class TTSManager(private val context: Context) {
                     return@launch
                 }
 
-                val request = TTSRequest(
-                    text = text,
-                    language = KANNADA_LOCALE,
-                    rate = speechRate,
-                    pitch = pitch
+                // Step 1: Get pipeline configuration
+                val pipelineConfig = getPipelineConfig()
+
+                if (pipelineConfig == null) {
+                    throw Exception("Failed to get pipeline configuration")
+                }
+
+                val inferenceUrl = cachedInferenceUrl ?: throw Exception("No inference URL available")
+                val serviceId = cachedServiceId ?: throw Exception("No service ID available")
+                val authToken = cachedAuthToken ?: throw Exception("No auth token available")
+
+                // Step 2: Make TTS inference request
+                val ttsRequest = BhashiniTTSRequest(
+                    pipelineTasks = listOf(
+                        TTSPipelineTask(
+                            taskType = "tts",
+                            config = TTSTaskConfig(
+                                language = LanguageConfig(sourceLanguage = KANNADA_LOCALE),
+                                serviceId = serviceId,
+                                gender = "female",
+                                samplingRate = 8000
+                            )
+                        )
+                    ),
+                    inputData = TTSInputData(
+                        input = listOf(TTSInput(source = text))
+                    )
                 )
 
                 val response = withContext(Dispatchers.IO) {
-                    bhashiniClient.textToSpeech("Bearer $apiKey", request)
+                    bhashiniInferenceService.textToSpeech(
+                        url = inferenceUrl,
+                        authToken = authToken,
+                        request = ttsRequest
+                    )
                 }
 
-                if (response.error != null) {
-                    throw Exception(response.error)
+                // Extract audio from nested response structure
+                val audioContent = response.pipelineResponse?.firstOrNull()?.audio?.firstOrNull()?.audioContent
+
+                if (audioContent.isNullOrBlank()) {
+                    throw Exception("No audio content in response")
                 }
 
                 // Decode base64 audio
-                val audioBytes = android.util.Base64.decode(response.audio, android.util.Base64.DEFAULT)
+                val audioBytes = android.util.Base64.decode(audioContent, android.util.Base64.DEFAULT)
 
                 if (saveToDownloads) {
                     // Use MediaStore for Downloads (Android 10+)

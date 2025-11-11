@@ -131,18 +131,93 @@ class NudiToUnicodeConverter {
 
     /**
      * Convert Unicode to Nudi (reverse conversion)
+     * Handles decomposed Unicode characters (consonant + vowel sign combinations)
      */
     private fun unicodeToNudi(text: String): String {
-        var result = text
+        // Remove ZWJ and other invisible characters
+        val cleaned = text.replace("\u200D", "").replace("\u200C", "")
 
-        // Sort by length (longest first) to avoid partial replacements
-        val sortedMappings = reverseMapping.entries.sortedByDescending { it.key.length }
+        val result = StringBuilder()
+        var i = 0
 
-        for ((unicode, nudi) in sortedMappings) {
-            result = result.replace(unicode, nudi)
+        while (i < cleaned.length) {
+            val char = cleaned[i]
+
+            // Skip non-Kannada characters (preserve spaces, punctuation)
+            if (char.code !in 0x0C80..0x0CFF) {
+                result.append(char)
+                i++
+                continue
+            }
+
+            // Try to match longest Unicode sequence first
+            val (nudiStr, charsConsumed) = findBestUnicodeMatch(cleaned, i)
+            result.append(nudiStr)
+            i += charsConsumed
         }
 
-        return result
+        return result.toString()
+    }
+
+    /**
+     * Find the best matching Nudi string for Unicode at current position
+     * Returns (nudiString, numberOfUnicodeCharsConsumed)
+     */
+    private fun findBestUnicodeMatch(text: String, start: Int): Pair<String, Int> {
+        // Try matching up to 4 characters
+        for (len in minOf(4, text.length - start) downTo 1) {
+            val substr = text.substring(start, start + len)
+
+            // Try exact match in reverse mapping
+            reverseMapping[substr]?.let {
+                return Pair(it, len)
+            }
+        }
+
+        // No match found - try component-based matching
+        val char = text[start]
+
+        // Check if it's a consonant followed by vowel sign
+        if (start + 1 < text.length) {
+            val next = text[start + 1]
+            if (isConsonant(char) && isVowelSign(next)) {
+                // Try to find mapping for consonant+vowel combination
+                val combined = "$char$next"
+                reverseMapping[combined]?.let {
+                    return Pair(it, 2)
+                }
+
+                // Try individual mappings
+                val consonantNudi = reverseMapping[char.toString()] ?: ""
+                val vowelNudi = reverseMapping[next.toString()] ?: ""
+                if (consonantNudi.isNotEmpty() && vowelNudi.isNotEmpty()) {
+                    return Pair(consonantNudi + vowelNudi, 2)
+                }
+            }
+        }
+
+        // Single character fallback
+        val singleMapping = reverseMapping[char.toString()]
+        return if (singleMapping != null) {
+            Pair(singleMapping, 1)
+        } else {
+            // Character not in mapping - keep as is
+            Pair(char.toString(), 1)
+        }
+    }
+
+    /**
+     * Check if character is a Kannada consonant
+     */
+    private fun isConsonant(char: Char): Boolean {
+        return char in '\u0C95'..'\u0CB9' || char in '\u0CBC'..'\u0CBF'
+    }
+
+    /**
+     * Check if character is a Kannada vowel sign (matra)
+     */
+    private fun isVowelSign(char: Char): Boolean {
+        return char in '\u0CBE'..'\u0CC4' || char in '\u0CC6'..'\u0CCC' || char == '\u0CCD'
     }
 
     /**
@@ -195,18 +270,9 @@ class NudiToUnicodeConverter {
             if (substr in mainMapping) {
                 // Direct mapping found
                 val mapped = mainMapping[substr]!!
-                
-                // Check if previous char is halant and current is not vattakshara
-                // Add ZWJ to prevent mixing
-                if (outputList.isNotEmpty() && outputList.last() == '\u0CCD') {
-                    // Check if this is not a vattakshara
-                    val firstChar = mapped.firstOrNull()
-                    if (firstChar != null && firstChar !in vattaksharagalu.values) {
-                        outputList.add('\u200D') // ZWJ
-                    }
-                }
-                
-                // Add mapped characters
+
+                // Add mapped characters directly
+                // Don't add ZWJ - it breaks words unnecessarily
                 outputList.addAll(mapped.toList())
                 n = i
                 break
@@ -630,9 +696,87 @@ class NudiToUnicodeConverter {
         /**
          * Reverse mapping - Unicode to Nudi
          * Built from mainMapping by reversing key-value pairs
+         * Also includes individual character mappings for decomposed Unicode
          */
         private val reverseMapping: Map<String, String> by lazy {
-            mainMapping.entries.associate { (nudi, unicode) -> unicode to nudi }
+            val map = mutableMapOf<String, String>()
+
+            // Add all existing mappings from mainMapping
+            mainMapping.forEach { (nudi, unicode) ->
+                map[unicode] = nudi
+            }
+
+            // Add individual base consonant mappings (with implicit 'a')
+            map["ಕ"] = "PÀ"
+            map["ಖ"] = "R"
+            map["ಗ"] = "UÀ"
+            map["ಘ"] = "WÀ"
+            map["ಙ"] = "Y"
+            map["ಚ"] = "ZÀ"
+            map["ಛ"] = "bÀ"
+            map["ಜ"] = "d"
+            map["ಝ"] = "gÀhÄ"
+            map["ಞ"] = "k"
+            map["ಟ"] = "l"
+            map["ಠ"] = "oÀ"
+            map["ಡ"] = "qÀ"
+            map["ಢ"] = "qsÀ"
+            map["ಣ"] = "t"
+            map["ತ"] = "vÀ"
+            map["ಥ"] = "xÀ"
+            map["ದ"] = "zÀ"
+            map["ಧ"] = "zsÀ"
+            map["ನ"] = "£À"
+            map["ಪ"] = "¥À"
+            map["ಫ"] = "¥sÀ"
+            map["ಬ"] = "§"
+            map["ಭ"] = "¨sÀ"
+            map["ಮ"] = "ªÀÄ"
+            map["ಯ"] = "AiÀÄ"
+            map["ರ"] = "gÀ"
+            map["ಲ"] = "®"
+            map["ವ"] = "ªÀ"
+            map["ಶ"] = "±À"
+            map["ಷ"] = "µÀ"
+            map["ಸ"] = "¸À"
+            map["ಹ"] = "ºÀ"
+            map["ಳ"] = "¼À"
+
+            // Add vowel sign mappings
+            map["ಾ"] = "Á"
+            map["ಿ"] = "Ä" // Note: varies by consonant in mainMapping
+            map["ೀ"] = "Ã"
+            map["ು"] = "Ä"
+            map["ೂ"] = "Æ"
+            map["ೃ"] = "È"
+            map["ೆ"] = "É"
+            map["ೇ"] = "ÉÃ"
+            map["ೈ"] = "ÉÊ"
+            map["ೊ"] = "ÉÆ"
+            map["ೋ"] = "ÉÇÃ"
+            map["ೌ"] = "Ë"
+            map["್"] = "ï"
+
+            // Add standalone vowels
+            map["ಅ"] = "C"
+            map["ಆ"] = "D"
+            map["ಇ"] = "E"
+            map["ಈ"] = "F"
+            map["ಉ"] = "G"
+            map["ಊ"] = "H"
+            map["ಋ"] = "IÄ"
+            map["ಎ"] = "J"
+            map["ಏ"] = "K"
+            map["ಐ"] = "L"
+            map["ಒ"] = "M"
+            map["ಓ"] = "N"
+            map["ಔ"] = "O"
+
+            // Add anusvara and visarga
+            map["ಂ"] = "A"
+            map["ಃ"] = "B"
+
+            map.toMap()
         }
     }
 }

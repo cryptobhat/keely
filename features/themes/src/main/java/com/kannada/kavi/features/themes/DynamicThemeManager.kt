@@ -1,11 +1,15 @@
 package com.kannada.kavi.features.themes
 
-import android.content.Context
-import android.content.res.Configuration
-import android.os.Build
+import android.app.WallpaperManager
 import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import androidx.annotation.RequiresApi
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -19,6 +23,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.graphics.ColorUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,11 +49,23 @@ class DynamicThemeManager(private val context: Context) {
     private val _isDarkMode = MutableStateFlow(isSystemDarkMode(context))
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
     
-    // Disable dynamic colors by default for IME services
-    // ComposeView requires a window context which IME services don't have initially
-    // We can enable this later when the keyboard view is created (has window)
+    // Enable dynamic colors by default if available, will fallback gracefully
+    // Dynamic colors are pre-loaded with static fallbacks for faster initialization
     private val _isDynamicColorEnabled = MutableStateFlow(false)
     val isDynamicColorEnabled: StateFlow<Boolean> = _isDynamicColorEnabled.asStateFlow()
+
+    private val wallpaperManager: WallpaperManager? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) WallpaperManager.getInstance(context) else null
+
+    private val wallpaperColorsListener =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) WallpaperManager.OnColorsChangedListener { _, _ ->
+            android.util.Log.i("DynamicThemeManager", "Wallpaper colors changed")
+            if (_isDynamicColorEnabled.value) {
+                updateColorScheme()
+            }
+        } else null
+
+    private var isWallpaperListenerRegistered = false
     
     // Broadcast receiver for system theme changes
     private val themeChangeReceiver = object : BroadcastReceiver() {
@@ -63,14 +80,28 @@ class DynamicThemeManager(private val context: Context) {
     private var isReceiverRegistered = false
     
     init {
-        // Always start with static colors (safe and works in IME service context)
-        _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
-        
+        // Try to extract dynamic colors immediately (synchronous)
+        val initialColors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                extractDynamicColorsDirectly(context, _isDarkMode.value)
+            } catch (e: Exception) {
+                android.util.Log.w("DynamicThemeManager", "Failed initial dynamic color extraction: ${e.message}")
+                getStaticColorScheme(_isDarkMode.value)
+            }
+        } else {
+            getStaticColorScheme(_isDarkMode.value)
+        }
+
+        // Apply colors immediately to both slots
+        _keyboardColorScheme.value = initialColors
+        KeyboardDesignSystem.setDynamicColorScheme(initialColors)
+        KeyboardDesignSystem.setFallbackColorScheme(initialColors)
+
         // Register receiver for system theme changes
         registerThemeChangeReceiver()
-        
-        // Note: Dynamic colors can be enabled later when we have a window context
-        // For now, we use static colors to prevent crashes
+        registerWallpaperChangeListener()
+
+        android.util.Log.i("DynamicThemeManager", "Initialized with colors: isDark=${_isDarkMode.value}, dynamic available=${Build.VERSION.SDK_INT >= Build.VERSION_CODES.S}")
     }
     
     /**
@@ -88,6 +119,21 @@ class DynamicThemeManager(private val context: Context) {
         }
     }
     
+    private fun registerWallpaperChangeListener() {
+        if (isWallpaperListenerRegistered || wallpaperColorsListener == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return
+        }
+        try {
+            wallpaperManager?.addOnColorsChangedListener(
+                wallpaperColorsListener,
+                Handler(Looper.getMainLooper())
+            )
+            isWallpaperListenerRegistered = true
+        } catch (e: Exception) {
+            android.util.Log.w("DynamicThemeManager", "Failed to register wallpaper colors listener: ${e.message}")
+        }
+    }
+    
     /**
      * Unregister broadcast receiver
      * Call this when the manager is no longer needed
@@ -101,18 +147,37 @@ class DynamicThemeManager(private val context: Context) {
                 android.util.Log.w("DynamicThemeManager", "Failed to unregister theme change receiver: ${e.message}")
             }
         }
+        unregisterWallpaperChangeListener()
+    }
+
+    private fun unregisterWallpaperChangeListener() {
+        if (!isWallpaperListenerRegistered || wallpaperColorsListener == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return
+        }
+        try {
+            wallpaperManager?.removeOnColorsChangedListener(wallpaperColorsListener)
+        } catch (e: Exception) {
+            android.util.Log.w("DynamicThemeManager", "Failed to unregister wallpaper colors listener: ${e.message}")
+        } finally {
+            isWallpaperListenerRegistered = false
+        }
     }
     
     /**
      * Update color scheme based on current system theme (async)
      */
     suspend fun updateColorSchemeAsync() {
+        // Always update dark mode state first
+        updateDarkModeState()
+
         if (!_isDynamicColorEnabled.value) {
-            // Fallback to static colors
-            _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
+            // Fallback to static colors (properly respecting dark mode)
+            val staticScheme = getStaticColorScheme(_isDarkMode.value)
+            _keyboardColorScheme.value = staticScheme
+            KeyboardDesignSystem.setDynamicColorScheme(null)
             return
         }
-        
+
         // Extract dynamic colors from Material 3 using a temporary ComposeView
         // This is a workaround since dynamic color schemes require Compose context
         // May fail in IME service context - that's okay, we'll use static colors
@@ -122,11 +187,11 @@ class DynamicThemeManager(private val context: Context) {
             }
             _keyboardColorScheme.value = DynamicColorScheme.extractKeyboardColors(colorScheme)
         } catch (e: Exception) {
-            // Fallback to static colors if dynamic colors fail
+            // Fallback to static colors if dynamic colors fail (but with correct dark mode)
             // Don't disable - allow retry when window becomes available
             _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
             // Log but don't disable - we'll retry when window is available
-            android.util.Log.w("DynamicThemeManager", "Failed to extract dynamic colors: ${e.message}. Will retry when window is available.")
+            android.util.Log.w("DynamicThemeManager", "Failed to extract dynamic colors: ${e.message}. Using static colors in ${if (_isDarkMode.value) "dark" else "light"} mode.")
         }
     }
     
@@ -134,16 +199,19 @@ class DynamicThemeManager(private val context: Context) {
      * Update color scheme synchronously (for immediate updates)
      */
     fun updateColorScheme() {
+        // Always update dark mode state first
+        updateDarkModeState()
+
         android.util.Log.i("DynamicThemeManager", "updateColorScheme() called")
         android.util.Log.i("DynamicThemeManager", "Dynamic enabled: ${_isDynamicColorEnabled.value}, Dark mode: ${_isDarkMode.value}")
 
         if (!_isDynamicColorEnabled.value) {
-            // Fallback to static colors
-            android.util.Log.i("DynamicThemeManager", "Using STATIC colors (dynamic disabled)")
+            // Fallback to static colors (with correct dark mode)
+            android.util.Log.i("DynamicThemeManager", "Using STATIC colors (dynamic disabled) in ${if (_isDarkMode.value) "DARK" else "LIGHT"} mode")
             _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
             return
         }
-        // For sync updates, use static colors immediately and update async in background
+        // For sync updates, use static colors immediately with correct dark mode
         android.util.Log.i("DynamicThemeManager", "Setting STATIC colors temporarily, then extracting DYNAMIC colors...")
         _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
         // Trigger async update to get dynamic colors
@@ -163,28 +231,107 @@ class DynamicThemeManager(private val context: Context) {
     
     /**
      * Update color scheme when window is available (call from onCreateInputView)
-     * This is the best time to extract dynamic colors since we have a window context
+     * Now uses direct extraction which is more reliable
      */
     fun updateColorSchemeWithWindow(windowContext: android.content.Context) {
-        if (!_isDynamicColorEnabled.value) {
-            _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
-            return
-        }
-        
-        // Use the window context to extract dynamic colors
-        kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+        // Always update dark mode state first
+        updateDarkModeState()
+
+        android.util.Log.i("DynamicThemeManager", "updateColorSchemeWithWindow called - Dark mode: ${_isDarkMode.value}, Dynamic enabled: ${_isDynamicColorEnabled.value}")
+
+        val colorScheme = if (_isDynamicColorEnabled.value && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
-                val colorScheme = extractDynamicColorScheme(windowContext, _isDarkMode.value)
-                _keyboardColorScheme.value = DynamicColorScheme.extractKeyboardColors(colorScheme)
+                // Try direct extraction first (synchronous and reliable)
+                val directColors = extractDynamicColorsDirectly(windowContext, _isDarkMode.value)
+                android.util.Log.i("DynamicThemeManager", "✓ Dynamic colors extracted directly")
+                directColors
             } catch (e: Exception) {
-                // If it still fails, fallback to static but don't disable
-                // User might have dynamic colors disabled in system settings
-                _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
-                e.printStackTrace()
+                android.util.Log.w("DynamicThemeManager", "Direct extraction failed, using static: ${e.message}")
+                getStaticColorScheme(_isDarkMode.value)
             }
+        } else {
+            getStaticColorScheme(_isDarkMode.value)
         }
+
+        // Apply immediately to all slots
+        _keyboardColorScheme.value = colorScheme
+        KeyboardDesignSystem.setDynamicColorScheme(colorScheme)
+        KeyboardDesignSystem.setFallbackColorScheme(colorScheme)
+
+        android.util.Log.i("DynamicThemeManager", "Color scheme applied: isDynamic=${_isDynamicColorEnabled.value && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S}")
     }
     
+    /**
+     * Extract dynamic colors directly from system theme resources
+     * More reliable than ComposeView for InputMethodService context
+     */
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun extractDynamicColorsDirectly(context: Context, isDark: Boolean): KeyboardColorScheme {
+        return try {
+            val resources = context.resources
+            val theme = context.theme
+
+            // Get Material You color resources (API 31+)
+            val colorPrimary = if (isDark) {
+                resources.getColor(android.R.color.system_accent1_600, theme)
+            } else {
+                resources.getColor(android.R.color.system_accent1_500, theme)
+            }
+
+            val colorSurface = if (isDark) {
+                resources.getColor(android.R.color.system_neutral1_900, theme)
+            } else {
+                resources.getColor(android.R.color.system_neutral1_50, theme)
+            }
+
+            val colorBackground = if (isDark) {
+                resources.getColor(android.R.color.system_neutral1_1000, theme)
+            } else {
+                resources.getColor(android.R.color.system_neutral1_10, theme)
+            }
+
+            val colorOnSurface = if (isDark) {
+                resources.getColor(android.R.color.system_neutral1_100, theme)
+            } else {
+                resources.getColor(android.R.color.system_neutral1_900, theme)
+            }
+
+            // Build keyboard color scheme
+            KeyboardColorScheme(
+                keyBackground = colorSurface,
+                keyPressed = ColorUtils.blendARGB(colorSurface, colorPrimary, if (isDark) 0.2f else 0.1f),
+                keyText = colorOnSurface,
+                specialKeyBackground = ColorUtils.blendARGB(colorSurface, colorPrimary, if (isDark) 0.15f else 0.08f),
+                specialKeyPressed = ColorUtils.blendARGB(colorSurface, colorPrimary, 0.3f),
+                specialKeyText = colorOnSurface,
+                specialKeyIcon = colorOnSurface,
+                actionKeyBackground = colorPrimary,
+                actionKeyPressed = ColorUtils.blendARGB(colorPrimary, colorBackground, 0.2f),
+                actionKeyText = if (isDark) {
+                    resources.getColor(android.R.color.system_neutral1_900, theme)
+                } else {
+                    resources.getColor(android.R.color.system_neutral1_10, theme)
+                },
+                actionKeyIcon = if (isDark) {
+                    resources.getColor(android.R.color.system_neutral1_900, theme)
+                } else {
+                    resources.getColor(android.R.color.system_neutral1_10, theme)
+                },
+                spacebarBackground = colorSurface,
+                spacebarText = ColorUtils.setAlphaComponent(colorOnSurface, (255 * 0.6).toInt()),
+                keyHintText = ColorUtils.setAlphaComponent(colorOnSurface, (255 * 0.5).toInt()),
+                keyboardBackground = colorBackground,
+                emojiFill = resources.getColor(android.R.color.system_accent1_200, theme),
+                emojiOutline = colorPrimary,
+                emojiEyes = colorOnSurface,
+                emojiSmile = colorOnSurface
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("DynamicThemeManager", "Failed to extract dynamic colors directly: ${e.message}")
+            getStaticColorScheme(isDark)
+        }
+    }
+
     /**
      * Extract dynamic color scheme using a temporary ComposeView
      * This is necessary because dynamic color schemes require Compose context
@@ -315,11 +462,28 @@ class DynamicThemeManager(private val context: Context) {
     }
     
     /**
+     * Set dark mode manually (from settings)
+     * This overrides system dark mode setting
+     */
+    fun setDarkMode(isDark: Boolean) {
+        android.util.Log.i("DynamicThemeManager", "setDarkMode: current=${_isDarkMode.value}, new=$isDark")
+        
+        if (_isDarkMode.value != isDark) {
+            _isDarkMode.value = isDark
+            // Update color scheme - will use dynamic colors if enabled
+            updateColorScheme()
+        }
+    }
+    
+    /**
      * Update dark mode state (call when system theme changes)
      * Also updates color scheme if dynamic colors are enabled
      */
     fun updateDarkMode() {
         val newDarkMode = isSystemDarkMode(context)
+
+        android.util.Log.i("DynamicThemeManager", "updateDarkMode: current=${_isDarkMode.value}, new=$newDarkMode")
+
         if (_isDarkMode.value != newDarkMode) {
             _isDarkMode.value = newDarkMode
             // Update color scheme - will use dynamic colors if enabled
@@ -329,6 +493,14 @@ class DynamicThemeManager(private val context: Context) {
             // This ensures dynamic colors stay in sync with system
             updateColorScheme()
         }
+    }
+
+    /**
+     * Update dark mode state without triggering color scheme update
+     */
+    private fun updateDarkModeState() {
+        _isDarkMode.value = isSystemDarkMode(context)
+        android.util.Log.i("DynamicThemeManager", "Dark mode state updated: ${_isDarkMode.value}")
     }
     
     /**
@@ -343,7 +515,9 @@ class DynamicThemeManager(private val context: Context) {
             // Can't enable on unsupported devices
             android.util.Log.w("DynamicThemeManager", "Dynamic colors not available on this device")
             _isDynamicColorEnabled.value = false
-            _keyboardColorScheme.value = getStaticColorScheme(_isDarkMode.value)
+            val staticScheme = getStaticColorScheme(_isDarkMode.value)
+            _keyboardColorScheme.value = staticScheme
+            KeyboardDesignSystem.setDynamicColorScheme(null)
             return
         }
         val wasEnabled = _isDynamicColorEnabled.value
@@ -365,7 +539,7 @@ class DynamicThemeManager(private val context: Context) {
      * Get static color scheme (fallback for devices without dynamic colors)
      */
     private fun getStaticColorScheme(isDark: Boolean): KeyboardColorScheme {
-        return if (isDark) {
+        val scheme = if (isDark) {
             KeyboardColorScheme(
                 keyBackground = 0xFF1E1E1E.toInt(),
                 keyPressed = 0xFF2E2E2E.toInt(),
@@ -388,29 +562,9 @@ class DynamicThemeManager(private val context: Context) {
                 emojiSmile = 0xFFFFFFFF.toInt()
             )
         } else {
-            // Use original design system colors as static light theme
-            KeyboardColorScheme(
-                keyBackground = KeyboardDesignSystem.Colors.KEY_BACKGROUND,
-                keyPressed = KeyboardDesignSystem.Colors.KEY_PRESSED,
-                keyText = KeyboardDesignSystem.Colors.KEY_TEXT,
-                specialKeyBackground = KeyboardDesignSystem.Colors.SPECIAL_KEY_BACKGROUND,
-                specialKeyPressed = KeyboardDesignSystem.Colors.SPECIAL_KEY_PRESSED,
-                specialKeyText = KeyboardDesignSystem.Colors.SPECIAL_KEY_TEXT,
-                specialKeyIcon = KeyboardDesignSystem.Colors.SPECIAL_KEY_ICON,
-                actionKeyBackground = KeyboardDesignSystem.Colors.ACTION_KEY_BACKGROUND,
-                actionKeyPressed = KeyboardDesignSystem.Colors.ACTION_KEY_PRESSED,
-                actionKeyText = KeyboardDesignSystem.Colors.ACTION_KEY_TEXT,
-                actionKeyIcon = KeyboardDesignSystem.Colors.ACTION_KEY_ICON,
-                spacebarBackground = KeyboardDesignSystem.Colors.SPACEBAR_BACKGROUND,
-                spacebarText = KeyboardDesignSystem.Colors.SPACEBAR_TEXT,
-                keyHintText = KeyboardDesignSystem.Colors.KEY_HINT_TEXT,
-                keyboardBackground = KeyboardDesignSystem.Colors.KEYBOARD_BACKGROUND,
-                emojiFill = KeyboardDesignSystem.Colors.EMOJI_FILL,
-                emojiOutline = KeyboardDesignSystem.Colors.EMOJI_OUTLINE,
-                emojiEyes = KeyboardDesignSystem.Colors.EMOJI_EYES,
-                emojiSmile = KeyboardDesignSystem.Colors.EMOJI_SMILE
-            )
+            KeyboardDesignSystem.getFallbackColorScheme()
         }
+        return scheme
     }
 }
 

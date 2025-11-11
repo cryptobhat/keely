@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.kannada.kavi.data.preferences.KeyboardPreferences
 import com.kannada.kavi.features.settings.ui.components.*
 import com.kannada.kavi.features.themes.MaterialYouThemeManager
 import com.kannada.kavi.features.themes.ThemeVariant
@@ -29,6 +30,7 @@ import com.kannada.kavi.features.themes.tokens.SpacingTokens
 @Composable
 fun ThemeSelectionScreen(
     themeManager: MaterialYouThemeManager,
+    preferences: KeyboardPreferences,
     onNavigateBack: () -> Unit
 ) {
     val currentVariant by themeManager.currentVariant.collectAsState()
@@ -90,6 +92,7 @@ fun ThemeSelectionScreen(
                         selected = currentVariant == ThemeVariant.DEFAULT,
                         onSelect = {
                             themeManager.setThemeVariant(ThemeVariant.DEFAULT)
+                            preferences.setThemeVariant(ThemeVariant.DEFAULT.name)
                         }
                     )
 
@@ -102,6 +105,7 @@ fun ThemeSelectionScreen(
                         selected = currentVariant == ThemeVariant.COMPACT,
                         onSelect = {
                             themeManager.setThemeVariant(ThemeVariant.COMPACT)
+                            preferences.setThemeVariant(ThemeVariant.COMPACT.name)
                         }
                     )
 
@@ -114,6 +118,7 @@ fun ThemeSelectionScreen(
                         selected = currentVariant == ThemeVariant.COMFORTABLE,
                         onSelect = {
                             themeManager.setThemeVariant(ThemeVariant.COMFORTABLE)
+                            preferences.setThemeVariant(ThemeVariant.COMFORTABLE.name)
                         }
                     )
                 }

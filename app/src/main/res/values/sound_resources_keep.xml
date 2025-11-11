@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Prevent resource shrinker from removing custom key sound assets -->
+    <item
+        name="keep_keyboard_sounds"
+        type="raw"
+        tools:keep="@raw/key_click,@raw/key_delete,@raw/key_space,@raw/key_enter,@raw/key_modifier"
+        tools:discard="@raw/keep_keyboard_sounds" />
+</resources>

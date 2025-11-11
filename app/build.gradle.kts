@@ -40,14 +40,19 @@ android {
             useSupportLibrary = true
         }
         
-        // Load Bhashini API key from local.properties
+        // Load Bhashini API configuration from local.properties
         val localProperties = Properties()
         val localPropertiesFile = rootProject.file("local.properties")
         if (localPropertiesFile.exists()) {
             localProperties.load(localPropertiesFile.inputStream())
         }
         val bhashiniApiKey = localProperties.getProperty("BHASHINI_API_KEY") ?: ""
+        val bhashiniUserId = localProperties.getProperty("BHASHINI_USER_ID") ?: ""
+        val bhashiniInferenceKey = localProperties.getProperty("BHASHINI_INFERENCE_KEY") ?: ""
+
         buildConfigField("String", "BHASHINI_API_KEY", "\"$bhashiniApiKey\"")
+        buildConfigField("String", "BHASHINI_USER_ID", "\"$bhashiniUserId\"")
+        buildConfigField("String", "BHASHINI_INFERENCE_KEY", "\"$bhashiniInferenceKey\"")
     }
 
     buildTypes {
@@ -132,7 +137,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)

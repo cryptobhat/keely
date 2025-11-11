@@ -39,3 +39,5 @@ data class SpeechToTextRequest(
     val channels: Int = 1
 )
 
+
+

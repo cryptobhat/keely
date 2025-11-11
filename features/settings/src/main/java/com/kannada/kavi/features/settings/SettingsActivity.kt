@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -45,6 +44,13 @@ class SettingsActivity : ComponentActivity() {
         themeManager = MaterialYouThemeManager(this)
         preferences = KeyboardPreferences(this)
 
+        // Apply saved theme preferences
+        themeManager.setDynamicColorEnabled(preferences.isDynamicThemeEnabled())
+        val savedDarkMode = preferences.isDarkModeEnabled()
+        if (savedDarkMode != null) {
+            themeManager.setDarkMode(savedDarkMode)
+        }
+
         // Enable edge-to-edge
         enableEdgeToEdge()
 
@@ -55,6 +61,12 @@ class SettingsActivity : ComponentActivity() {
                 onFinish = { finish() }
             )
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Update theme when system theme changes
+        themeManager.onConfigurationChanged(newConfig)
     }
 }
 
@@ -69,11 +81,17 @@ fun SettingsApp(
 ) {
     // Observe theme changes
     val currentTheme by themeManager.currentTheme.collectAsState()
-    val isDark = currentTheme.isDark
+    val isDark by themeManager.isDarkMode.collectAsState()
+    val isDynamicEnabled by themeManager.isDynamicEnabled.collectAsState()
+    val colorScheme by themeManager.colorScheme.collectAsState()
 
-    // Apply Material You theme
+    // Apply Material You theme with dynamic colors if enabled
     MaterialTheme(
-        colorScheme = if (isDark) {
+        colorScheme = if (isDynamicEnabled && colorScheme != null) {
+            // Use dynamic colors from wallpaper
+            colorScheme!!
+        } else if (isDark) {
+            // Use static dark theme
             darkColorScheme(
                 primary = ColorTokens.Dark.primary,
                 onPrimary = ColorTokens.Dark.onPrimary,
@@ -180,6 +198,7 @@ fun SettingsApp(
             composable("themes") {
                 ThemeSelectionScreen(
                     themeManager = themeManager,
+                    preferences = preferences,
                     onNavigateBack = {
                         navController.popBackStack()
                     }

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Prevent the resource shrinker from deleting icons that we load via getIdentifier -->
+    <item
+        name="keep_keyboard_icons"
+        type="drawable"
+        tools:keep="@drawable/view_cozy_24,
+                    @drawable/content_paste_24,
+                    @drawable/settings_24,
+                    @drawable/palette_24,
+                    @drawable/mic_24,
+                    @drawable/keyboard_return_24,
+                    @drawable/send_24,
+                    @drawable/search_24,
+                    @drawable/check_24,
+                    @drawable/backspace_24,
+                    @drawable/arrow_upward_24,
+                    @drawable/language,
+                    @drawable/mood_24"
+        tools:discard="@drawable/keep_keyboard_icons" />
+</resources>

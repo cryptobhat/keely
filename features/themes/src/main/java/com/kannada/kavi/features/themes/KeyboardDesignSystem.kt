@@ -2,60 +2,72 @@ package com.kannada.kavi.features.themes
 
 import android.content.Context
 import android.graphics.Color
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * KeyboardDesignSystem - Exact screenshot design values
- * 
+ *
  * Simple design system matching the exact keyboard layout from screenshot.
  * All values extracted from visual analysis of the reference design.
- * 
+ *
  * Now supports Material You dynamic colors when DynamicThemeManager is provided.
  */
 object KeyboardDesignSystem {
-    
-    // Current dynamic color scheme (null = use static colors)
-    private var dynamicColorScheme: KeyboardColorScheme? = null
-    
+
+    // Thread-safe color scheme storage using AtomicReference
+    private val colorSchemeRef = AtomicReference<KeyboardColorScheme>(defaultLightScheme())
+
     /**
-     * Set dynamic color scheme (called by DynamicThemeManager)
+     * Set color scheme (thread-safe)
+     * Both dynamic and fallback now use the same mechanism
      */
     fun setDynamicColorScheme(scheme: KeyboardColorScheme?) {
-        dynamicColorScheme = scheme
+        val actualScheme = scheme ?: defaultLightScheme()
+        colorSchemeRef.set(actualScheme)
+        android.util.Log.d("KeyboardDesignSystem", "Color scheme updated: dynamic=${scheme != null}, " +
+            "keyBg=${Integer.toHexString(actualScheme.keyBackground)}")
     }
-    
+
     /**
-     * Get current color scheme (dynamic if available, otherwise static)
+     * Set fallback color scheme (now same as dynamic)
+     */
+    fun setFallbackColorScheme(scheme: KeyboardColorScheme) {
+        colorSchemeRef.set(scheme)
+        android.util.Log.d("KeyboardDesignSystem", "Fallback scheme set: keyBg=${Integer.toHexString(scheme.keyBackground)}")
+    }
+
+    /**
+     * Get current color scheme (thread-safe)
      */
     private fun getColorScheme(): KeyboardColorScheme {
-        return dynamicColorScheme ?: getStaticColorScheme()
+        return colorSchemeRef.get()
     }
     
-    /**
-     * Get static color scheme (fallback)
-     */
-    private fun getStaticColorScheme(): KeyboardColorScheme {
+    private fun defaultLightScheme(): KeyboardColorScheme {
         return KeyboardColorScheme(
-            keyBackground = Colors.KEY_BACKGROUND,
-            keyPressed = Colors.KEY_PRESSED,
-            keyText = Colors.KEY_TEXT,
-            specialKeyBackground = Colors.SPECIAL_KEY_BACKGROUND,
-            specialKeyPressed = Colors.SPECIAL_KEY_PRESSED,
-            specialKeyText = Colors.SPECIAL_KEY_TEXT,
-            specialKeyIcon = Colors.SPECIAL_KEY_ICON,
-            actionKeyBackground = Colors.ACTION_KEY_BACKGROUND,
-            actionKeyPressed = Colors.ACTION_KEY_PRESSED,
-            actionKeyText = Colors.ACTION_KEY_TEXT,
-            actionKeyIcon = Colors.ACTION_KEY_ICON,
-            spacebarBackground = Colors.SPACEBAR_BACKGROUND,
-            spacebarText = Colors.SPACEBAR_TEXT,
-            keyHintText = Colors.KEY_HINT_TEXT,
-            keyboardBackground = Colors.KEYBOARD_BACKGROUND,
-            emojiFill = Colors.EMOJI_FILL,
-            emojiOutline = Colors.EMOJI_OUTLINE,
-            emojiEyes = Colors.EMOJI_EYES,
-            emojiSmile = Colors.EMOJI_SMILE
+            keyBackground = 0xFFFFFFFF.toInt(),
+            keyPressed = 0xFFE8F5F3.toInt(),
+            keyText = 0xFF191C1C.toInt(),
+            specialKeyBackground = 0xFFDAE5E3.toInt(),
+            specialKeyPressed = 0xFFC5D5D3.toInt(),
+            specialKeyText = 0xFF191C1C.toInt(),
+            specialKeyIcon = 0xFF191C1C.toInt(),
+            actionKeyBackground = 0xFF3F8C80.toInt(),
+            actionKeyPressed = 0xFF2F6C60.toInt(),
+            actionKeyText = 0xFFFFFFFF.toInt(),
+            actionKeyIcon = 0xFFFFFFFF.toInt(),
+            spacebarBackground = 0xFFFFFFFF.toInt(),
+            spacebarText = 0xFFBBBBBB.toInt(),
+            keyHintText = 0xFFAAAAAA.toInt(),
+            keyboardBackground = 0xFFF5F5F5.toInt(),
+            emojiFill = 0xFFFFEB3B.toInt(),
+            emojiOutline = 0xFFF9A825.toInt(),
+            emojiEyes = 0xFF000000.toInt(),
+            emojiSmile = 0xFF000000.toInt()
         )
     }
+
+    fun getFallbackColorScheme(): KeyboardColorScheme = defaultLightScheme()
 
     // ==================== COLORS ====================
     object Colors {

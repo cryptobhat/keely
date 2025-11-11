@@ -1,11 +1,14 @@
 package com.kannada.kavi.data.repositories
 
 import android.content.Context
+import android.os.Build
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.kannada.kavi.core.common.Result
 import com.kannada.kavi.data.preferences.KeyboardPreferences
 import com.kannada.kavi.features.themes.KeyboardTheme
+import com.kannada.kavi.features.themes.KeyboardColors
+import com.kannada.kavi.features.themes.MaterialYouThemeManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -244,12 +247,32 @@ class ThemeRepository(
      * @return Generated theme or null
      */
     private fun generateDynamicTheme(isDark: Boolean): KeyboardTheme? {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return null
         }
 
-        // TODO: Implement dynamic theme generation once MaterialYouColorPalette is available
-        return null
+        return runCatching {
+            val manager = MaterialYouThemeManager(context)
+            manager.setDarkMode(isDark)
+            manager.setDynamicColorEnabled(true)
+            val materialTheme = manager.currentTheme.value
+            val colors = materialTheme.colors
+            KeyboardTheme(
+                id = if (isDark) THEME_DYNAMIC_DARK else THEME_DYNAMIC_LIGHT,
+                name = if (isDark) "Dynamic Dark" else "Dynamic Light",
+                isDark = isDark,
+                colors = KeyboardColors(
+                    background = colors.surfaceContainerHigh,
+                    keyBackground = colors.surface,
+                    keyForeground = colors.onSurface,
+                    primaryKeyBackground = colors.primary,
+                    primaryKeyForeground = colors.onPrimary,
+                    accent = colors.secondary,
+                    suggestion = colors.primary,
+                    divider = colors.outlineVariant
+                )
+            )
+        }.getOrNull()
     }
 
     /**

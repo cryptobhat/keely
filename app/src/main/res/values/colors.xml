@@ -1,10 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
+    <!-- Legacy colors (kept for compatibility with night theme) -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+
+    <!-- Material You Color System (Light Theme) -->
+    <!-- These colors match the Material You profile specification -->
+
+    <!-- Primary colors - Main brand color (Teal/Green) -->
+    <color name="material_you_primary">#FF006C5F</color>           <!-- Primary 40 -->
+    <color name="material_you_on_primary">#FFFFFFFF</color>        <!-- White on primary -->
+    <color name="material_you_primary_container">#FF9FF1E0</color> <!-- Primary 90 -->
+    <color name="material_you_on_primary_container">#FF00201B</color> <!-- Primary 10 -->
+
+    <!-- Secondary colors - Supporting color -->
+    <color name="material_you_secondary">#FF4A635F</color>         <!-- Neutral Variant 40 -->
+    <color name="material_you_on_secondary">#FFFFFFFF</color>      <!-- White on secondary -->
+    <color name="material_you_secondary_container">#FFCCE8E2</color> <!-- Neutral Variant 90 -->
+    <color name="material_you_on_secondary_container">#FF051F1C</color> <!-- Neutral Variant 10 -->
+
+    <!-- Tertiary colors - Accent color -->
+    <color name="material_you_tertiary">#FF416376</color>          <!-- Blue accent -->
+    <color name="material_you_on_tertiary">#FFFFFFFF</color>       <!-- White on tertiary -->
+    <color name="material_you_tertiary_container">#FFC5E7FF</color> <!-- Blue container -->
+    <color name="material_you_on_tertiary_container">#FF001E2D</color> <!-- Dark text -->
+
+    <!-- Surface colors - Background surfaces -->
+    <color name="material_you_surface">#FFFAFDFD</color>           <!-- Neutral 98 -->
+    <color name="material_you_on_surface">#FF191C1C</color>        <!-- Neutral 10 -->
+    <color name="material_you_surface_variant">#FFDAE5E3</color>   <!-- Neutral Variant 90 -->
+    <color name="material_you_on_surface_variant">#FF3F4948</color> <!-- Neutral Variant 30 -->
+
+    <!-- Background colors -->
+    <color name="material_you_background">#FFFFFFFF</color>        <!-- Pure white -->
+    <color name="material_you_on_background">#FF191C1C</color>     <!-- Neutral 10 -->
+
+    <!-- Outline colors - Borders and dividers -->
+    <color name="material_you_outline">#FF6F7978</color>           <!-- Neutral Variant 50 -->
+    <color name="material_you_outline_variant">#FFBEC9C7</color>   <!-- Neutral Variant 80 -->
+
+    <!-- Error colors -->
+    <color name="material_you_error">#FFB3261E</color>             <!-- Material standard error -->
+    <color name="material_you_on_error">#FFFFFFFF</color>          <!-- White on error -->
+    <color name="material_you_error_container">#FFF9DEDC</color>   <!-- Light error container -->
+    <color name="material_you_on_error_container">#FF410E0B</color> <!-- Dark text on error container -->
+
+    <!-- Material You Color System (Dark Theme) -->
+    <!-- These colors match the Material You profile specification for dark mode -->
+
+    <!-- Primary colors (Dark) - Brighter in dark mode -->
+    <color name="material_you_dark_primary">#FF83D4C1</color>      <!-- Primary 80 -->
+    <color name="material_you_dark_on_primary">#FF003730</color>   <!-- Primary 20 -->
+    <color name="material_you_dark_primary_container">#FF005048</color> <!-- Primary 30 -->
+    <color name="material_you_dark_on_primary_container">#FF9FF1E0</color> <!-- Primary 90 -->
+
+    <!-- Secondary colors (Dark) -->
+    <color name="material_you_dark_secondary">#FFB0CCCB</color>    <!-- Neutral Variant 80 -->
+    <color name="material_you_dark_on_secondary">#FF1B3532</color> <!-- Neutral Variant 20 -->
+    <color name="material_you_dark_secondary_container">#FF324B49</color> <!-- Neutral Variant 30 -->
+    <color name="material_you_dark_on_secondary_container">#FFCCE5E1</color> <!-- Neutral Variant 90 -->
+
+    <!-- Tertiary colors (Dark) -->
+    <color name="material_you_dark_tertiary">#FFA6CFB4</color>     <!-- Tertiary 80 -->
+    <color name="material_you_dark_on_tertiary">#FF113724</color>  <!-- Tertiary 20 -->
+    <color name="material_you_dark_tertiary_container">#FF294E3A</color> <!-- Tertiary 30 -->
+    <color name="material_you_dark_on_tertiary_container">#FFC2ECCF</color> <!-- Tertiary 90 -->
+
+    <!-- Surface colors (Dark) -->
+    <color name="material_you_dark_surface">#FF191C1C</color>      <!-- Neutral 10 -->
+    <color name="material_you_dark_on_surface">#FFE0E3E2</color>   <!-- Neutral 90 -->
+    <color name="material_you_dark_surface_variant">#FF3F4948</color> <!-- Neutral Variant 30 -->
+    <color name="material_you_dark_on_surface_variant">#FFBEC9C7</color> <!-- Neutral Variant 80 -->
+
+    <!-- Background colors (Dark) -->
+    <color name="material_you_dark_background">#FF191C1C</color>   <!-- Neutral 10 -->
+    <color name="material_you_dark_on_background">#FFE0E3E2</color> <!-- Neutral 90 -->
+
+    <!-- Outline colors (Dark) -->
+    <color name="material_you_dark_outline">#FF899392</color>      <!-- Neutral Variant 60 -->
+    <color name="material_you_dark_outline_variant">#FF3F4948</color> <!-- Neutral Variant 30 -->
+
+    <!-- Error colors (Dark) -->
+    <color name="material_you_dark_error">#FFFFB4AB</color>        <!-- Error 80 -->
+    <color name="material_you_dark_on_error">#FF690005</color>     <!-- Error 20 -->
+    <color name="material_you_dark_error_container">#FF93000A</color> <!-- Error 30 -->
+    <color name="material_you_dark_on_error_container">#FFFFDAD6</color> <!-- Error 90 -->
 </resources>

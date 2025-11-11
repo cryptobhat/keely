@@ -90,6 +90,18 @@ class SwipePathView @JvmOverloads constructor(
 
         // Enable hardware acceleration
         setLayerType(LAYER_TYPE_HARDWARE, null)
+        
+        // Make view non-clickable so it doesn't interfere with touch events
+        isClickable = false
+        isFocusable = false
+    }
+    
+    /**
+     * Override onTouchEvent to not consume events - let them pass through to keyboard view
+     */
+    override fun onTouchEvent(event: android.view.MotionEvent?): Boolean {
+        // Don't consume touch events - let keyboard view handle them
+        return false
     }
 
     /**
@@ -116,11 +128,15 @@ class SwipePathView @JvmOverloads constructor(
 
     /**
      * Start swipe tracking
+     * Coordinates should be in the same coordinate space as KeyboardView
      */
     fun startSwipe(x: Float, y: Float) {
         isActive = true
         fadeAlpha = 1f
         swipePath.clear()
+
+        // Don't clamp - trust the coordinates from KeyboardView
+        // Clamping can cause misalignment between visual path and key detection
         swipePath.add(PointF(x, y))
         fadeAnimator?.cancel()
         visibility = VISIBLE
@@ -129,13 +145,18 @@ class SwipePathView @JvmOverloads constructor(
 
     /**
      * Update swipe path
+     * Coordinates should be in the same coordinate space as KeyboardView
      */
     fun updatePath(x: Float, y: Float) {
         if (!isActive) return
 
+        // Don't clamp - trust the coordinates from KeyboardView
+        // Clamping can cause misalignment between visual path and key detection
+
         // Add point if it's far enough from last point (smoothing)
         val lastPoint = swipePath.lastOrNull()
-        if (lastPoint == null || distance(lastPoint.x, lastPoint.y, x, y) > 5f * density) {
+        if (lastPoint == null || distance(lastPoint.x, lastPoint.y, x, y) > 2f * density) {
+            // Lower threshold for smoother path tracking (was 5f)
             swipePath.add(PointF(x, y))
             invalidate()
         }

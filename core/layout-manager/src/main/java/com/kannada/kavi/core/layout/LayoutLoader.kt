@@ -347,6 +347,7 @@ class LayoutLoader(private val context: Context) {
             "emoji" -> KeyType.EMOJI
             "voice" -> KeyType.VOICE
             "settings" -> KeyType.SETTINGS
+            "comma_emoji" -> KeyType.COMMA_EMOJI
             else -> KeyType.CHARACTER
         }
     }

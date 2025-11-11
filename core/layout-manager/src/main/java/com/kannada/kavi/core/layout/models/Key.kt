@@ -72,7 +72,7 @@ data class Key(
      * Check if this is a character key (types text)
      */
     val isCharacter: Boolean
-        get() = type == KeyType.CHARACTER && output.isNotEmpty()
+        get() = type in setOf(KeyType.CHARACTER, KeyType.COMMA_EMOJI) && output.isNotEmpty()
 
     /**
      * Check if this is a modifier key (Shift, Symbols, etc.)
@@ -182,7 +182,13 @@ enum class KeyType {
      * CLIPBOARD - Shows clipboard history
      * Opens popup with clipboard items
      */
-    CLIPBOARD
+    CLIPBOARD,
+
+    /**
+     * COMMA_EMOJI - Combined comma key with emoji access
+     * Taps insert a comma, long-press toggles emoji picker
+     */
+    COMMA_EMOJI
 }
 
 /**

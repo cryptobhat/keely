@@ -48,6 +48,7 @@ dependencies {
 
     // Module-specific dependencies
     implementation(project(":core:common"))
+    implementation(project(":data:preferences"))
     implementation(libs.gson)
 
     // Testing

@@ -14,15 +14,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlin.jvm.Volatile
 
 /**
  * ClipboardManager - Advanced Clipboard with History
  *
- * Manages clipboard history with 50-item storage, undo/redo, and more!
+ * Manages clipboard history with 20-item storage, undo/redo, and more!
  *
  * FEATURES:
  * =========
- * 1. **History**: Stores last 50 copied items
+ * 1. **History**: Stores last 20 copied items
  * 2. **Undo/Redo**: 20-action undo stack
  * 3. **Search**: Find old clipboard items
  * 4. **Pin**: Keep important items forever
@@ -32,7 +33,7 @@ import java.util.UUID
  * HOW IT WORKS:
  * =============
  * 1. User copies text → addItem()
- * 2. Stored in memory list (max 50)
+ * 2. Stored in memory list (max 20)
  * 3. Also stored in undo stack (max 20)
  * 4. UI observes via Flow
  * 5. User can paste any item
@@ -76,6 +77,11 @@ class ClipboardManager(
 
     // Android system clipboard (for integration)
     private val systemClipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as AndroidClipboardManager
+    private val systemListener = AndroidClipboardManager.OnPrimaryClipChangedListener {
+        if (!ignoreNextSystemEvent) {
+            importPrimaryClip()
+        }
+    }
 
     // Clipboard history (in memory)
     private val _items = MutableStateFlow<List<ClipboardItem>>(emptyList())
@@ -94,6 +100,9 @@ class ClipboardManager(
 
     // Track if clipboard has been initialized (loaded from database)
     private var isInitialized = false
+    private var isListening = false
+    @Volatile
+    private var ignoreNextSystemEvent = false
 
     /**
      * Initialize clipboard manager by loading history from database.
@@ -129,6 +138,22 @@ class ClipboardManager(
      * @return The created ClipboardItem
      */
     fun addItem(text: String, sourceApp: String? = null): ClipboardItem {
+        return addItemInternal(text, sourceApp, propagateToSystem = true)
+    }
+
+    /**
+     * Add an entry that originated from the system clipboard listener without
+     * writing it back and causing an infinite loop.
+     */
+    fun addExternalItem(text: String, sourceApp: String? = null): ClipboardItem {
+        return addItemInternal(text, sourceApp, propagateToSystem = false)
+    }
+
+    private fun addItemInternal(
+        text: String,
+        sourceApp: String?,
+        propagateToSystem: Boolean
+    ): ClipboardItem {
         val sanitizedText = text.trim().take(Constants.Clipboard.MAX_CLIP_LENGTH)
 
         // Don't add empty text
@@ -184,8 +209,9 @@ class ClipboardManager(
             }
         }
 
-        // Also copy to system clipboard
-        copyToSystemClipboard(sanitizedText)
+        if (propagateToSystem) {
+            copyToSystemClipboard(sanitizedText)
+        }
 
         return item
     }
@@ -454,7 +480,12 @@ class ClipboardManager(
      */
     private fun copyToSystemClipboard(text: String) {
         val clip = ClipData.newPlainText("Kavi Clipboard", text)
-        systemClipboard.setPrimaryClip(clip)
+        try {
+            ignoreNextSystemEvent = true
+            systemClipboard.setPrimaryClip(clip)
+        } finally {
+            ignoreNextSystemEvent = false
+        }
     }
 
     /**
@@ -473,6 +504,32 @@ class ClipboardManager(
      */
     internal fun setItemsInternal(items: List<ClipboardItem>) {
         _items.value = items
+    }
+
+    /**
+     * Start listening to system clipboard changes to keep in-memory history in sync.
+     */
+    fun startSystemListener() {
+        if (isListening) return
+        systemClipboard.addPrimaryClipChangedListener(systemListener)
+        isListening = true
+        importPrimaryClip()
+    }
+
+    /**
+     * Stop listening to system clipboard changes.
+     */
+    fun stopSystemListener() {
+        if (!isListening) return
+        systemClipboard.removePrimaryClipChangedListener(systemListener)
+        isListening = false
+    }
+
+    private fun importPrimaryClip() {
+        val clip = systemClipboard.primaryClip ?: return
+        if (clip.itemCount == 0) return
+        val text = clip.getItemAt(0).coerceToText(context)?.toString() ?: return
+        addItemInternal(text, sourceApp = null, propagateToSystem = false)
     }
 
     /**

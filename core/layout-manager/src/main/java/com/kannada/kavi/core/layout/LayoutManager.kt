@@ -8,6 +8,7 @@ import com.kannada.kavi.core.common.resultSuccess
 import com.kannada.kavi.core.layout.models.KeyboardLayout
 import com.kannada.kavi.core.layout.models.KeyboardRow
 import com.kannada.kavi.core.layout.models.LayerName
+import com.kannada.kavi.data.preferences.KeyboardPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,7 +33,10 @@ import kotlinx.coroutines.flow.asStateFlow
  * 5. Handle layer switching
  * 6. Provide current keyboard state to UI
  */
-class LayoutManager(context: Context) {
+class LayoutManager(
+    context: Context,
+    private val preferences: KeyboardPreferences? = null
+) {
 
     private val layoutLoader = LayoutLoader(context)
 
@@ -78,9 +82,28 @@ class LayoutManager(context: Context) {
                 is Result.Success -> {
                     _availableLayouts.value = result.data
 
-                    // Set first layout as active (or load from preferences)
+                    // Set active layout from preferences or first enabled layout
                     if (result.data.isNotEmpty()) {
-                        setActiveLayout(result.data[0])
+                        val layoutToActivate = if (preferences != null) {
+                            // Get current layout from preferences
+                            val currentLayoutId = preferences.getCurrentLayout()
+                            val enabledLayouts = preferences.getEnabledLayouts()
+
+                            // Find the layout and ensure it's enabled
+                            val currentLayout = result.data.find { it.id == currentLayoutId }
+                            if (currentLayout != null && enabledLayouts.contains(currentLayoutId)) {
+                                currentLayout
+                            } else {
+                                // Fall back to first enabled layout
+                                result.data.find { enabledLayouts.contains(it.id) } ?: result.data[0]
+                            }
+                        } else {
+                            // No preferences, use first layout
+                            result.data[0]
+                        }
+
+                        android.util.Log.d("LayoutManager", "Initialize: Setting active layout to ${layoutToActivate.id}")
+                        setActiveLayout(layoutToActivate)
                     }
 
                     resultSuccess(Unit)
@@ -129,22 +152,31 @@ class LayoutManager(context: Context) {
 
     /**
      * Switch to the next available layout
-     * Cycles through: Phonetic → Kavi → QWERTY → Phonetic → ...
+     * Cycles through enabled layouts only
      * Handles edge cases where current layout might not be found
      */
     fun switchToNextLayout() {
         android.util.Log.e("LayoutManager", "===== SWITCH TO NEXT LAYOUT CALLED =====")
-        val layouts = _availableLayouts.value
-        android.util.Log.d("LayoutManager", "switchToNextLayout: Available layouts count = ${layouts.size}")
+        val allLayouts = _availableLayouts.value
+
+        // Filter to only enabled layouts if preferences are available
+        val layouts = if (preferences != null) {
+            val enabledIds = preferences.getEnabledLayouts()
+            allLayouts.filter { enabledIds.contains(it.id) }
+        } else {
+            allLayouts
+        }
+
+        android.util.Log.d("LayoutManager", "switchToNextLayout: Available layouts count = ${allLayouts.size}, Enabled = ${layouts.size}")
 
         if (layouts.isEmpty()) {
-            android.util.Log.w("LayoutManager", "switchToNextLayout: No layouts available!")
+            android.util.Log.w("LayoutManager", "switchToNextLayout: No enabled layouts available!")
             return
         }
 
-        // If only one layout, nothing to switch
+        // If only one enabled layout, nothing to switch
         if (layouts.size == 1) {
-            android.util.Log.d("LayoutManager", "switchToNextLayout: Only one layout, nothing to switch")
+            android.util.Log.d("LayoutManager", "switchToNextLayout: Only one enabled layout, nothing to switch")
             return
         }
 
@@ -171,6 +203,10 @@ class LayoutManager(context: Context) {
         // This ensures StateFlow emits and observers are notified
         val nextLayout = layouts[nextIndex]
         android.util.Log.d("LayoutManager", "switchToNextLayout: Switching from index $currentIndex to $nextIndex, layout = ${nextLayout.id}")
+
+        // Save the new layout to preferences
+        preferences?.setCurrentLayout(nextLayout.id)
+
         setActiveLayout(nextLayout)
         android.util.Log.d("LayoutManager", "switchToNextLayout: Switched to ${_activeLayout.value?.id}, layer = ${_activeLayer.value}, rows = ${_currentRows.value.size}")
     }
@@ -339,6 +375,16 @@ class LayoutManager(context: Context) {
         val rows = layout?.getLayer(layer)?.toMutableList() ?: mutableListOf()
         android.util.Log.d("LayoutManager", "updateCurrentRows: Got ${rows.size} rows (NEW MUTABLELIST created)")
 
+        // Add number row if enabled (only for default and shift layers)
+        if (preferences?.isNumberRowEnabled() == true &&
+            (layer == LayerName.DEFAULT || layer == LayerName.SHIFT)) {
+            val numberRow = createNumberRow()
+            if (numberRow != null) {
+                rows.add(0, numberRow) // Add at the top
+                android.util.Log.d("LayoutManager", "Added number row to layout")
+            }
+        }
+
         // Always update the StateFlow, even if rows are empty
         // This ensures observers are notified of changes
         val oldRows = _currentRows.value
@@ -395,5 +441,79 @@ class LayoutManager(context: Context) {
         _isCapsLockActive.value = false
         _activeLayer.value = LayerName.DEFAULT
         updateCurrentRows()
+    }
+
+    /**
+     * Create a number row for the top of the keyboard
+     */
+    private fun createNumberRow(): KeyboardRow? {
+        return try {
+            val keys = listOf(
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "1",
+                    output = "1",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "2",
+                    output = "2",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "3",
+                    output = "3",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "4",
+                    output = "4",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "5",
+                    output = "5",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "6",
+                    output = "6",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "7",
+                    output = "7",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "8",
+                    output = "8",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "9",
+                    output = "9",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                ),
+                com.kannada.kavi.core.layout.models.Key(
+                    label = "0",
+                    output = "0",
+                    type = com.kannada.kavi.core.layout.models.KeyType.CHARACTER,
+                    width = 1.0f
+                )
+            )
+            KeyboardRow(keys = keys)
+        } catch (e: Exception) {
+            android.util.Log.e("LayoutManager", "Failed to create number row", e)
+            null
+        }
     }
 }

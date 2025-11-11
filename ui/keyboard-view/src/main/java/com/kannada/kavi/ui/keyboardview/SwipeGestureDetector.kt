@@ -40,13 +40,19 @@ import kotlin.math.sqrt
 class SwipeGestureDetector {
 
     companion object {
-        // Thresholds
-        private const val TAP_THRESHOLD_DP = 10f  // Movement less than this = tap
-        private const val SWIPE_VELOCITY_THRESHOLD = 500f  // Minimum velocity for swipe
-        private const val SWIPE_MIN_DISTANCE_DP = 40f  // Minimum distance for swipe
+        // Thresholds - Optimized for better swipe detection
+        // Lower tap threshold for more responsive swipe detection
+        private const val TAP_THRESHOLD_DP = 15f  // Movement less than this = tap
+        private const val SWIPE_VELOCITY_THRESHOLD = 500f  // Lower velocity for easier swipes
+        private const val SWIPE_MIN_DISTANCE_DP = 30f  // Lower minimum distance for easier swipe initiation
 
-        // Swipe typing settings
-        private const val SWIPE_SAMPLE_INTERVAL_MS = 16L  // 60 FPS sampling
+        // Swipe typing specific thresholds
+        private const val SWIPE_TYPE_MIN_DISTANCE_DP = 60f  // Lower for easier swipe typing
+        private const val SWIPE_TYPE_MIN_POINTS = 3  // Fewer points needed for word detection
+        private const val SWIPE_TYPE_MIN_DURATION_MS = 150L  // Shorter duration for faster swipes
+
+        // Swipe settings
+        private const val SWIPE_SAMPLE_INTERVAL_MS = 8L  // 120 FPS sampling for smoother tracking
         private const val SWIPE_MIN_KEYS = 2  // Need at least 2 keys for word
     }
 
@@ -62,6 +68,7 @@ class SwipeGestureDetector {
 
     private var listener: GestureListener? = null
     private var density: Float = 1f
+    private var sensitivity: Float = 1.0f  // Default sensitivity
 
     // Touch state
     private var isTracking = false
@@ -74,7 +81,15 @@ class SwipeGestureDetector {
 
     // Path tracking for swipe typing
     private val swipePath = mutableListOf<PointF>()
+    private val normalizedPath = mutableListOf<SwipeAlgorithms.NormalizedPoint>()  // Normalized path for better accuracy
     private val swipeKeySequence = mutableListOf<String>()
+    private var lastKeyAddedAt: PointF? = null  // Track position where last key was added
+
+    // Keyboard bounds for normalization
+    private var keyboardLeft = 0f
+    private var keyboardTop = 0f
+    private var keyboardWidth = 0f
+    private var keyboardHeight = 0f
 
     // Long press detection
     private var longPressRunnable: Runnable? = null
@@ -93,6 +108,34 @@ class SwipeGestureDetector {
     fun setDensity(density: Float) {
         this.density = density
     }
+
+    /**
+     * Set swipe sensitivity (0.5 = less sensitive, 1.0 = normal, 2.0 = more sensitive)
+     */
+    fun setSensitivity(sensitivity: Float) {
+        this.sensitivity = sensitivity.coerceIn(0.5f, 2.0f)
+    }
+
+    /**
+     * Set keyboard bounds for coordinate normalization
+     * Essential for FlorisBoard-style gesture recognition
+     */
+    fun setKeyboardBounds(left: Float, top: Float, width: Float, height: Float) {
+        keyboardLeft = left
+        keyboardTop = top
+        keyboardWidth = width
+        keyboardHeight = height
+    }
+    
+    /**
+     * Get start X position (for checking swipe distance)
+     */
+    fun getStartX(): Float = startX
+    
+    /**
+     * Get start Y position (for checking swipe distance)
+     */
+    fun getStartY(): Float = startY
 
     /**
      * Process touch event
@@ -131,12 +174,24 @@ class SwipeGestureDetector {
 
         // Clear previous path
         swipePath.clear()
+        normalizedPath.clear()
         swipeKeySequence.clear()
+        lastKeyAddedAt = null  // Reset position tracking
 
         // Add first point
         swipePath.add(PointF(x, y))
 
-        return true
+        // Add normalized point if keyboard bounds are set
+        if (keyboardWidth > 0 && keyboardHeight > 0) {
+            val normalizedPoint = SwipeAlgorithms.normalizePoint(
+                x, y, keyboardLeft, keyboardTop, keyboardWidth, keyboardHeight
+            )
+            normalizedPath.add(normalizedPoint)
+        }
+
+        // Don't consume the event yet - wait to see if it's a tap or swipe
+        // This allows normal tap handling to proceed if it's just a tap
+        return false
     }
 
     /**
@@ -151,27 +206,48 @@ class SwipeGestureDetector {
         val totalDistance = sqrt(dx * dx + dy * dy)
 
         // Check if this is a swipe (moved beyond tap threshold)
-        val tapThreshold = TAP_THRESHOLD_DP * density
-        if (totalDistance > tapThreshold && swipePath.size == 1) {
-            // Started swiping
-            listener?.onSwipeStart(startX, startY)
-        }
+        // Apply sensitivity: higher sensitivity = lower threshold (more sensitive)
+        val tapThreshold = (TAP_THRESHOLD_DP * density) / sensitivity
 
-        // Sample path at intervals (60 FPS)
-        if (currentTime - lastSampleTime >= SWIPE_SAMPLE_INTERVAL_MS) {
-            swipePath.add(PointF(x, y))
-            lastSampleTime = currentTime
-
-            // Notify listener of swipe progress
-            if (swipePath.size > 1) {
-                listener?.onSwipeMove(x, y, swipePath)
+        // Check if movement exceeds tap threshold (indicates swipe)
+        if (totalDistance > tapThreshold) {
+            // Started swiping - notify only once
+            if (swipePath.size == 1) {
+                listener?.onSwipeStart(startX, startY)
+                android.util.Log.d("SwipeDetector", "Swipe started at ($startX, $startY)")
             }
+
+            // Sample path at intervals (120 FPS)
+            if (currentTime - lastSampleTime >= SWIPE_SAMPLE_INTERVAL_MS) {
+                swipePath.add(PointF(x, y))
+
+                // Add normalized point if keyboard bounds are set
+                if (keyboardWidth > 0 && keyboardHeight > 0) {
+                    val normalizedPoint = SwipeAlgorithms.normalizePoint(
+                        x, y, keyboardLeft, keyboardTop, keyboardWidth, keyboardHeight
+                    )
+                    normalizedPath.add(normalizedPoint)
+                }
+
+                lastSampleTime = currentTime
+
+                // Notify listener of swipe progress
+                if (swipePath.size > 1) {
+                    listener?.onSwipeMove(x, y, swipePath)
+                }
+            }
+
+            lastX = x
+            lastY = y
+
+            // Consume event as this is a swipe (movement beyond tap threshold)
+            // This prevents normal touch handling from interfering
+            android.util.Log.v("SwipeDetector", "Swipe move: dist=${totalDistance}px, threshold=${tapThreshold}px, consuming event")
+            return true
         }
 
-        lastX = x
-        lastY = y
-
-        return true
+        // Still within tap threshold, don't consume (let normal touch handle)
+        return false
     }
 
     /**
@@ -185,38 +261,60 @@ class SwipeGestureDetector {
         val dy = y - startY
         val distance = sqrt(dx * dx + dy * dy)
 
-        // Add final point
-        if (swipePath.isEmpty() || swipePath.last().let { it.x != x || it.y != y }) {
+        // Add final point if we have a path
+        if (swipePath.isNotEmpty() && swipePath.last().let { it.x != x || it.y != y }) {
             swipePath.add(PointF(x, y))
+
+            // Add normalized point if keyboard bounds are set
+            if (keyboardWidth > 0 && keyboardHeight > 0) {
+                val normalizedPoint = SwipeAlgorithms.normalizePoint(
+                    x, y, keyboardLeft, keyboardTop, keyboardWidth, keyboardHeight
+                )
+                normalizedPath.add(normalizedPoint)
+            }
         }
 
         // Classify gesture
-        val tapThreshold = TAP_THRESHOLD_DP * density
-        val swipeMinDistance = SWIPE_MIN_DISTANCE_DP * density
+        // Apply sensitivity to thresholds: higher sensitivity = lower thresholds (more sensitive)
+        val tapThreshold = (TAP_THRESHOLD_DP * density) / sensitivity
+        val swipeMinDistance = (SWIPE_MIN_DISTANCE_DP * density) / sensitivity
 
-        val gesture = when {
+        var wasHandled = false
+
+        when {
             // Tap (minimal movement)
             distance < tapThreshold -> {
+                android.util.Log.d("SwipeDetector", "Tap detected: dist=${distance}px, threshold=${tapThreshold}px")
                 listener?.onTap(x, y)
-                null
+                wasHandled = false  // Let normal tap handling proceed
             }
             // Swipe (significant movement)
             distance >= swipeMinDistance -> {
-                classifySwipe(dx, dy, distance, duration)
+                val gesture = classifySwipe(dx, dy, distance, duration)
+                if (gesture != null) {
+                    android.util.Log.d("SwipeDetector", "Swipe detected: type=${gesture.type}, dist=${distance}px")
+                    listener?.onSwipeEnd(gesture)
+                    wasHandled = true  // We handled this as a swipe
+                } else {
+                    android.util.Log.w("SwipeDetector", "Swipe movement detected but classification failed")
+                    wasHandled = false
+                }
             }
-            else -> null
-        }
-
-        if (gesture != null) {
-            listener?.onSwipeEnd(gesture)
+            // Movement between tap and swipe threshold - treat as tap
+            else -> {
+                android.util.Log.d("SwipeDetector", "Small movement, treating as tap: dist=${distance}px")
+                listener?.onTap(x, y)
+                wasHandled = false
+            }
         }
 
         // Reset state
         isTracking = false
         swipePath.clear()
+        normalizedPath.clear()
         swipeKeySequence.clear()
 
-        return true
+        return wasHandled
     }
 
     /**
@@ -228,6 +326,7 @@ class SwipeGestureDetector {
         }
         isTracking = false
         swipePath.clear()
+        normalizedPath.clear()
         swipeKeySequence.clear()
     }
 
@@ -246,31 +345,73 @@ class SwipeGestureDetector {
             else -> SwipeDirection.LEFT
         }
 
+        // Log for debugging
+        android.util.Log.d("SwipeDetector", "Classify: path=${swipePath.size} pts, dist=${distance}px, dur=${duration}ms, vel=${velocity}px/s")
+
+        // Apply sensitivity to swipe typing threshold
+        val swipeTypeMinDistance = (SWIPE_TYPE_MIN_DISTANCE_DP * density) / sensitivity
+        
         // Determine type based on path length and characteristics
+        // Check cursor movement FIRST (before swipe typing) if it's clearly horizontal
+        val isHorizontal = abs(dx) > abs(dy) * 1.5f  // More lenient horizontal check
+        val isVertical = abs(dy) > abs(dx) * 1.5f
+        
         val type = when {
-            // Swipe typing: long path with multiple points
-            swipePath.size >= 5 && distance > SWIPE_MIN_DISTANCE_DP * density * 2 -> {
+            // PRIORITY 1: Swipe typing - check FIRST if we have enough points and keys
+            // This prevents horizontal word swipes from being misclassified as cursor
+            swipePath.size >= SWIPE_TYPE_MIN_POINTS &&
+            swipeKeySequence.size >= 2 &&  // Need at least 2 different keys
+            distance >= swipeTypeMinDistance &&
+            duration >= SWIPE_TYPE_MIN_DURATION_MS -> {
+                android.util.Log.d("SwipeDetector", "Detected SWIPE_TYPE: keys=${swipeKeySequence.size}, path=${swipePath.size}, dist=${distance}px")
                 SwipeType.SWIPE_TYPE
             }
-            // Quick swipe: fast and short
-            velocity > SWIPE_VELOCITY_THRESHOLD -> {
-                when (direction) {
-                    SwipeDirection.LEFT -> SwipeType.SWIPE_DELETE
-                    SwipeDirection.UP -> SwipeType.SWIPE_SHIFT
-                    else -> SwipeType.QUICK_SWIPE
-                }
+            // PRIORITY 2: Quick delete - fast leftward swipe
+            direction == SwipeDirection.LEFT &&
+            velocity > SWIPE_VELOCITY_THRESHOLD &&
+            duration < 200 -> {
+                android.util.Log.d("SwipeDetector", "Detected SWIPE_DELETE")
+                SwipeType.SWIPE_DELETE
             }
-            // Cursor movement: horizontal swipe
-            abs(dx) > abs(dy) * 2 -> {
+            // PRIORITY 3: Quick shift - fast upward swipe
+            direction == SwipeDirection.UP &&
+            velocity > SWIPE_VELOCITY_THRESHOLD &&
+            duration < 200 -> {
+                android.util.Log.d("SwipeDetector", "Detected SWIPE_SHIFT")
+                SwipeType.SWIPE_SHIFT
+            }
+            // PRIORITY 4: Cursor movement - horizontal swipe WITHOUT multiple keys
+            // Only classify as cursor if we haven't collected multiple keys (not typing)
+            isHorizontal &&
+            swipeKeySequence.size < 2 &&  // Not typing if we haven't hit multiple keys
+            distance >= SWIPE_MIN_DISTANCE_DP * density &&
+            duration >= 100L -> {
+                android.util.Log.d("SwipeDetector", "Detected SWIPE_CURSOR: horizontal, no keys")
                 SwipeType.SWIPE_CURSOR
             }
-            else -> SwipeType.QUICK_SWIPE
+            // Default to quick swipe for other gestures
+            else -> {
+                android.util.Log.d("SwipeDetector", "Detected QUICK_SWIPE")
+                SwipeType.QUICK_SWIPE
+            }
+        }
+
+        // Prepare normalized and resampled path for better accuracy
+        val resampledPath = if (normalizedPath.size >= 2) {
+            // First smooth the normalized path
+            val smoothedPath = SwipeAlgorithms.smoothPath(normalizedPath)
+            // Then resample to fixed number of points
+            SwipeAlgorithms.resamplePath(smoothedPath, SwipeAlgorithms.RESAMPLE_POINTS)
+        } else {
+            emptyList()
         }
 
         return SwipeGesture(
             type = type,
             direction = direction,
             path = swipePath.toList(),
+            normalizedPath = normalizedPath.toList(),
+            resampledPath = resampledPath,
             distance = distance,
             velocity = velocity,
             duration = duration,
@@ -286,16 +427,25 @@ class SwipeGestureDetector {
      * Called by KeyboardView when swipe passes over a key
      */
     fun addKeyToSequence(keyLabel: String) {
-        // Avoid duplicate consecutive keys
-        if (swipeKeySequence.isEmpty() || swipeKeySequence.last() != keyLabel) {
-            swipeKeySequence.add(keyLabel)
-        }
+        swipeKeySequence.add(keyLabel)
     }
 
     /**
      * Get current swipe key sequence
      */
     fun getKeySequence(): List<String> = swipeKeySequence.toList()
+
+    /**
+     * Get position where last key was added
+     */
+    fun getLastKeyAddedAt(): PointF? = lastKeyAddedAt
+
+    /**
+     * Set position where key was just added
+     */
+    fun setLastKeyAddedAt(point: PointF) {
+        lastKeyAddedAt = point
+    }
 
     /**
      * Get current swipe path
@@ -315,6 +465,8 @@ data class SwipeGesture(
     val type: SwipeType,
     val direction: SwipeDirection,
     val path: List<PointF>,
+    val normalizedPath: List<SwipeAlgorithms.NormalizedPoint> = emptyList(),  // Normalized 0-1 coordinates
+    val resampledPath: List<SwipeAlgorithms.NormalizedPoint> = emptyList(),  // Resampled to fixed points
     val distance: Float,
     val velocity: Float,
     val duration: Long,

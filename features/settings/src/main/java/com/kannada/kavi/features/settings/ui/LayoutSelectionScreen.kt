@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.dp
 import com.kannada.kavi.data.preferences.KeyboardPreferences
 import com.kannada.kavi.features.settings.ui.components.*
 import com.kannada.kavi.features.themes.tokens.SpacingTokens
@@ -28,6 +29,8 @@ fun LayoutSelectionScreen(
     onNavigateBack: () -> Unit
 ) {
     var currentLayout by remember { mutableStateOf(preferences.getCurrentLayout()) }
+    var numberRowEnabled by remember { mutableStateOf(preferences.isNumberRowEnabled()) }
+    var oneHandedMode by remember { mutableStateOf(preferences.getOneHandedMode()) }
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -171,6 +174,71 @@ fun LayoutSelectionScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Number row toggle
+            item {
+                SettingsSection(title = "Additional Options")
+            }
+
+            item {
+                SettingsCard {
+                    SettingsSwitchItem(
+                        title = "Number Row",
+                        description = "Show permanent number row above keyboard",
+                        icon = null,
+                        checked = numberRowEnabled,
+                        onCheckedChange = { checked ->
+                            numberRowEnabled = checked
+                            preferences.setNumberRowEnabled(checked)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(SpacingTokens.base)
+                    ) {
+                        Text(
+                            text = "One-Handed Mode",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = SpacingTokens.sm)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(SpacingTokens.sm)
+                        ) {
+                            listOf("Off", "Left", "Right").forEachIndexed { index, label ->
+                                val mode = when (label) {
+                                    "Off" -> "off"
+                                    "Left" -> "left"
+                                    else -> "right"
+                                }
+                                Button(
+                                    onClick = {
+                                        oneHandedMode = mode
+                                        preferences.setOneHandedMode(mode)
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (oneHandedMode == mode)
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Text(label, style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
                     }
