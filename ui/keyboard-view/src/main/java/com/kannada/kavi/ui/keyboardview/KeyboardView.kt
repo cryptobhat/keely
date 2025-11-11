@@ -254,6 +254,7 @@ class KeyboardView @JvmOverloads constructor(
     private var keyPressAnimator: ValueAnimator? = null
     private var keyPressScale = 1.0f
     private var animatingKey: Key? = null
+    private var isAnimationActive = false  // Track if any animation is running to avoid partial invalidation conflicts
 
     // Layout change animation (e.g., number row toggle)
     private lateinit var layoutAnimator: ValueAnimator
@@ -1698,15 +1699,23 @@ class KeyboardView @JvmOverloads constructor(
         
         // Notify SwipePathView of size change to ensure coordinate alignment
         swipePathView?.let { pathView ->
-            // Ensure SwipePathView matches our size exactly
-            pathView.layoutParams?.let { params ->
-                if (params.width != w || params.height != h) {
-                    params.width = w
-                    params.height = h
-                    pathView.requestLayout()
-                    android.util.Log.d("KeyboardView", "onSizeChanged: SwipePathView size updated to $w x $h")
-                }
-            }
+            // Validate and synchronize SwipePathView size
+            pathView.validateSize(w, h)
+            android.util.Log.d("KeyboardView", "onSizeChanged: Synchronized SwipePathView to $w x $h")
+            // Enforce Z-order: SwipePathView must be on top
+            pathView.bringToFront()
+        }
+    }
+
+    /**
+     * Enforce SwipePathView Z-order on layout changes
+     * Called after view layout to ensure proper overlay ordering
+     */
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        if (changed) {
+            // Enforce SwipePathView stays on top during layout changes
+            swipePathView?.bringToFront()
         }
     }
 
@@ -2042,21 +2051,23 @@ class KeyboardView @JvmOverloads constructor(
 
             addUpdateListener { animator ->
                 keyPressScale = animator.animatedValue as Float
-                // Use pre-calculated bounds for better performance
-                animBounds?.let {
-                    invalidate(
-                        it.left.toInt(),
-                        it.top.toInt(),
-                        it.right.toInt(),
-                        it.bottom.toInt()
-                    )
-                } ?: invalidate() // Fallback to full invalidate if key not found
+                isAnimationActive = true
+                // Use full invalidate during animations to prevent partial invalidation flickering
+                // when multiple animations overlap (ripple + key scale)
+                invalidate()
             }
 
             // Chain release animation without delay for smooth transition
             doOnEnd {
-                // Start release animation immediately for smooth transition
-                animateKeyRelease()
+                try {
+                    // Start release animation immediately for smooth transition
+                    animateKeyRelease()
+                } finally {
+                    // Ensure transient state is cleared even if animation is cancelled
+                    androidx.core.view.ViewCompat.setHasTransientState(this@KeyboardView, false)
+                    animatingKey = null
+                    isAnimationActive = false
+                }
             }
 
             start()
@@ -2083,22 +2094,20 @@ class KeyboardView @JvmOverloads constructor(
 
             addUpdateListener { animator ->
                 keyPressScale = animator.animatedValue as Float
-                // Use pre-calculated bounds for better performance
-                animBounds?.let {
-                    invalidate(
-                        it.left.toInt(),
-                        it.top.toInt(),
-                        it.right.toInt(),
-                        it.bottom.toInt()
-                    )
-                } ?: invalidate() // Fallback to full invalidate if key not found
+                isAnimationActive = true
+                // Use full invalidate during animations to prevent flickering
+                invalidate()
             }
 
             doOnEnd {
-                animatingKey = null
-                keyPressScale = 1.0f
-                // Clear transient state
-                androidx.core.view.ViewCompat.setHasTransientState(this@KeyboardView, false)
+                try {
+                    animatingKey = null
+                    keyPressScale = 1.0f
+                } finally {
+                    // Clear transient state
+                    androidx.core.view.ViewCompat.setHasTransientState(this@KeyboardView, false)
+                    isAnimationActive = false
+                }
             }
 
             start()
@@ -2139,15 +2148,15 @@ class KeyboardView @JvmOverloads constructor(
             duration = KeyboardDesignSystem.Animations.RIPPLE_DURATION
             interpolator = AccelerateDecelerateInterpolator() // Smooth motion
 
+            // Delay ripple start to avoid simultaneous updates with key press animation
+            // This prevents partial invalidation conflicts and flickering
+            startDelay = 20L
+
             addUpdateListener { animator ->
                 rippleRadius = animator.animatedValue as Float
-                // Use pre-calculated max bounds for consistent invalidation
-                invalidate(
-                    rippleAnimBounds.left.toInt(),
-                    rippleAnimBounds.top.toInt(),
-                    rippleAnimBounds.right.toInt(),
-                    rippleAnimBounds.bottom.toInt()
-                )
+                isAnimationActive = true
+                // Use full invalidate to prevent flickering when ripple overlaps with key scale
+                invalidate()
             }
 
             // Auto-fade after reaching max size
@@ -2173,18 +2182,17 @@ class KeyboardView @JvmOverloads constructor(
 
             addUpdateListener { animator ->
                 rippleRadius = animator.animatedValue as Float
-                // Calculate bounds for current radius
-                val rippleBounds = (rippleRadius + 10).toInt()
-                invalidate(
-                    (rippleX - rippleBounds).toInt(),
-                    (rippleY - rippleBounds).toInt(),
-                    (rippleX + rippleBounds).toInt(),
-                    (rippleY + rippleBounds).toInt()
-                )
+                isAnimationActive = true
+                // Use full invalidate to ensure ripple fades smoothly
+                invalidate()
             }
 
             doOnEnd {
-                rippleRadius = 0f
+                try {
+                    rippleRadius = 0f
+                } finally {
+                    isAnimationActive = false
+                }
             }
 
             start()

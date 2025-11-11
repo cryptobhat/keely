@@ -88,8 +88,9 @@ class SwipePathView @JvmOverloads constructor(
         // Apply colors from design system
         applyColors()
 
-        // Enable hardware acceleration
-        setLayerType(LAYER_TYPE_HARDWARE, null)
+        // Use software layer to avoid conflicts with keyboard's hardware acceleration
+        // Hardware layers can cause GPU memory pressure and rendering artifacts when multiple layers are active
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
         
         // Make view non-clickable so it doesn't interfere with touch events
         isClickable = false
@@ -124,6 +125,20 @@ class SwipePathView @JvmOverloads constructor(
 
         // Key highlight (very subtle)
         keyHighlightPaint.color = ColorUtils.setAlphaComponent(primaryColor, (255 * 0.15f).toInt())
+    }
+
+    /**
+     * Validate and synchronize view size with parent
+     * Called to ensure SwipePathView dimensions match KeyboardView
+     */
+    fun validateSize(expectedWidth: Int, expectedHeight: Int) {
+        if (width != expectedWidth || height != expectedHeight) {
+            layoutParams?.let { params ->
+                params.width = expectedWidth
+                params.height = expectedHeight
+                requestLayout()
+            }
+        }
     }
 
     /**
